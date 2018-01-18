@@ -1,0 +1,62 @@
+---
+namespaces:
+  default:
+    services:
+    - name: mongodb-replicaset
+      ports:
+      - port: 27017
+      stateful: true
+      pod:
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
+        replicas: 2
+        containers:
+        - name: mongodb
+          image: registry.rebelsoft.com/mongodb:latest
+          env:
+          - {name: ARGS, value: "--replSet rs0"}
+          - {name: POD_NAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+          - {name: DBPATH, value: "/data/$(POD_NAME)"}
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            subPath: mongodb-replicaset
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - >
+                    if [ "$POD_NAME" = "mongodb-replicaset-0" ]; then
+                      until mongo --quiet --eval "db.version()"; do echo "Waiting for Master..."; sleep 10; done;
+                      if mongo --quiet --eval="rs.status()"|grep NotYetInitialized; then
+                        mongo --quiet --eval="rs.initiate()"
+                      fi;
+                      until mongo --quiet --eval="rs.status()"|grep '"ok" : 1'; do echo "Waiting for initiate..."; sleep 5; done;
+                      mongo --quiet --eval="
+                      rs.reconfig(
+                         {
+                            _id: \"rs0\",
+                            members: [
+                               { _id: 0, host : \"mongodb-replicaset-0:27017\" },
+                               { _id: 1, host : \"mongodb-replicaset-1:27017\", priority: 0 }
+                            ]
+                         },
+                         {force: true}
+                      )
+                      "
+                    fi;
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - >
+                    mongo --quiet --eval='db.adminCommand({shutdown : 1, timeoutSecs : 60, force: true})';
+        flexvolume-ebs-claimtemplate:
+        - {volumeID: vol-008184f1479121cac, zone: us-west-2a, attachDevice: /dev/sdf, mountDevice: /dev/xvdf, size: 10Gi}
+        - {volumeID: vol-0ad983f040a1c9f5f, zone: us-west-2b, attachDevice: /dev/sdf, mountDevice: /dev/xvdf, size: 10Gi}
+

@@ -1,0 +1,24 @@
+namespaces:
+  default:
+    services:
+    - name: arangodb
+      ports:
+      - port: 8529
+      annotations:
+        nginx:
+        - http:
+          - server: arangodb.*
+            paths:
+            - path: /
+      pod:
+        containers:
+        - name: arangodb
+          image: registry.rebelsoft.com/arangodb:latest
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            subPath: arangodb-data
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs

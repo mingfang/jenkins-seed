@@ -1,0 +1,77 @@
+namespaces:
+  default:
+    services:
+      - name: namerd
+        ports:
+        - {name: http, port: 4180}
+        - {name: thrift, port: 4100}
+        - {name: admin, port: 9990}
+        annotations:
+          nginx:
+            - http:
+              - server: namerd.*
+                port: 9990
+                paths:
+                  - path: /
+          icon: https://linkerd.io/images/linkerd-loop-final.gif
+        pod:
+          volumes:
+          - name: namerd-config
+            configMap:
+              name: namerd-config
+          containers:
+            - name: namerd
+              image: buoyantio/namerd:1.0.2
+              args:
+                - /io.buoyant/namerd/config/config.yml
+              volumeMounts:
+                - name: "namerd-config"
+                  mountPath: "/io.buoyant/namerd/config"
+                  readOnly: true
+            - name: kubectl
+              image: buoyantio/kubectl:v1.4.0
+              args:
+                - "proxy"
+                - "-p"
+                - "8001"
+
+      - name: l5d
+        ports:
+          - {name: outgoing, port: 4140}
+          - {name: incoming, port: 4141}
+          - {name: admin, port: 9990}
+        selector:
+          name: l5d
+
+      - name: linkerd-viz
+        ports:
+          - {name: http, port: 3000}
+          - {name: prometheus, port: 9191}
+        annotations:
+          nginx:
+            - http:
+              - server: linkerd-viz.*
+                paths:
+                  - path: /
+          icon: https://linkerd.io/images/linkerd-loop-final.gif
+        pod:
+          containers:
+          - name: linkerd-viz
+            image: buoyantio/linkerd-viz:latest
+            args: ["k8s"]
+            env:
+            - name: PUBLIC_PORT
+              value: "3000"
+            - name: STATS_PORT
+              value: "9191"
+            ports:
+            - name: grafana
+              containerPort: 3000
+            - name: prometheus
+              containerPort: 9191
+          - name: kubectl
+            image: buoyantio/kubectl:v1.4.0
+            args:
+            - "proxy"
+            - "-p"
+            - "8001"

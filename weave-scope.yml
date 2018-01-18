@@ -1,0 +1,54 @@
+---
+namespaces:
+  default:
+    services:
+    - name: weave-scope
+      ports:
+      - {name: http, port: 4040}
+      annotations:
+          nginx:
+          - http:
+            - server: weave-scope.*
+              paths:
+                - path: /
+      pod:
+        containers:
+        - name: weave-scope
+          image: weaveworks/scope:1.6.7
+          args:
+          - '--no-probe'
+
+    daemonsets:
+    - name: weave-scope-agent
+      containers:
+      - name: agent
+        image: weaveworks/scope:1.6.7
+        args:
+        - '--no-app'
+        - '--probe.docker.bridge=docker0'
+        - '--probe.docker=true'
+        - '--probe.kubernetes=true'
+        - 'weave-scope:4040'
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: docker-socket
+          mountPath: /var/run/docker.sock
+        - name: scope-plugins
+          mountPath: /var/run/scope/plugins
+        - name: sys-kernel-debug
+          mountPath: /sys/kernel/debug
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+      - name: docker-socket
+        hostPath:
+          path: /var/run/docker.sock
+      - name: scope-plugins
+        hostPath:
+          path: /var/run/scope/plugins
+      - name: sys-kernel-debug
+        hostPath:
+          path: /sys/kernel/debug
+

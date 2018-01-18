@@ -1,0 +1,63 @@
+---
+namespaces:
+  default:
+    services:
+    - name: spark-master
+      ports:
+      - {port: 7077, name: master}
+      - {port: 6066, name: rest}
+      - {port: 8080, name: ui}
+      annotations:
+        nginx:
+        - http:
+          - server: spark-master.*
+            port: 7077
+            paths:
+            - path: /
+          - server: spark-rest.*
+            port: 6066
+            paths:
+            - path: /
+          - server: spark-ui.*
+            port: 8080
+            paths:
+            - path: /
+              directives:
+              - sub_filter 'href=\"http://' 'href=\"/proxy:';
+              - sub_filter_once off;
+            - path: ~ /proxy:(?<targetHost>[^\/?#]*)(?<targetPath>.*)
+              no_proxy: true
+              directives:
+              - proxy_pass http://$targetHost$targetPath$is_args$args;
+              - proxy_redirect ~http:\/\/.*\/(.+)$ http://$host$uri/$1;
+              - sub_filter 'href=\"/' 'href=\"/proxy:$targetHost/';
+              - sub_filter 'href=\"log' 'href=\"/proxy:$targetHost/log';
+              - sub_filter 'href=\"http://' 'href=\"/proxy:';
+              - sub_filter 'src=\"/' 'src=\"/proxy:$targetHost/';
+              - sub_filter 'action=\"/' 'action=\"/proxy:$targetHost/';
+              - sub_filter_once off;
+        icon: //spark.apache.org/docs/latest/img/spark-logo-hd.png
+      pod:
+        containers:
+        - name: spark-master
+          image: registry.rebelsoft.com/spark-master
+          scm: git@github.com:mingfang/docker-spark-master.git
+          env:
+          - {name: SPARK_MASTER_PORT, value: "7077"}
+
+    - name: spark-slave
+      ports:
+      - port: 8081
+      annotations:
+        icon: //spark.apache.org/docs/latest/img/spark-logo-hd.png
+      pod:
+        replicas: 4
+        containers:
+        - name: spark-slave
+          image: registry.rebelsoft.com/spark-master
+          ports:
+          - {containerPort: 8081}
+          env:
+          - name: SPARK_MASTER_URL
+            value: "spark://spark-master:7077"
+

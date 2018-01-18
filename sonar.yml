@@ -1,0 +1,19 @@
+namespaces:
+  default:
+    services:
+      - name: sonar
+        ports:
+          - port: 9000
+        annotations:
+          nginx:
+            - http:
+              - server: sonar.*
+                paths:
+                  - path: /
+          icon: http://docs.sonarqube.org/s/en_GB/5987/7f4d200af80c8d2bb74491844d32cdca053c56a4.11/_/images/logo/confluence-logo.png
+        pod:
+          replicas: 0
+          containers:
+          - name: sonar
+            image: registry.rebelsoft.com/sonar:latest
+            scm: git@github.com:mingfang/docker-sonar.git

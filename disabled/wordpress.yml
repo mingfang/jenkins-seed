@@ -1,0 +1,86 @@
+---
+namespace:
+  default:
+    services:
+      - name: wordress
+        ports:
+        - port: 80
+        annotations:
+          nginx:
+            - http:
+              - server: www.*
+                paths:
+                - path: /
+              - server: blog.*
+                paths:
+                - path: /
+              - server: store.*
+                paths:
+                - path: /
+              - server: marketing.*
+                paths:
+                - path: /
+              - server: support.*
+                paths:
+                - path: /
+              - server: default
+                paths:
+                - path: "= /"
+                  directives:
+                  - "return 301 https://www.rebelsoft.com;"
+          icon: https://s.w.org/about/images/logos/wordpress-logo-notext-rgb.png
+        pod:
+          replicas: 1
+          containers:
+          - name: wordpress
+            image: registry.rebelsoft.com/wordpress:latest
+            scm: https://github.com/mingfang/docker-wordpress.git
+            env:
+              - {name: DB_HOST, value: "wordpress-db"}
+              - {name: DB_NAME, value: "wordpress"}
+              - {name: DB_USER, value: "wordpress"}
+              - {name: DB_PASSWORD, value: "wordpress"}
+            volumeMounts:
+              - name: data
+                mountPath: /var/www/html/wp
+                subPath: wordpress-data
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+
+      - name: wordpress-db
+        ports:
+          - {port: 3306, name: mysql}
+          - {port: 80,  name: web}
+        annotations:
+          nginx:
+            - http:
+              - server: wordpress-db.*
+                port: 80
+                paths:
+                  - path: /
+        pod:
+          replicas: 1
+          containers:
+          - name: mysql
+            image: registry.rebelsoft.com/mysql:latest
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - >
+                      mysqladmin --wait=5 ping;
+                      echo "CREATE DATABASE IF NOT EXISTS wordpress;" | mysql;
+                      echo "GRANT ALL ON wordpress.* TO 'wordpress'@'%' IDENTIFIED BY 'wordpress';" | mysql;
+            volumeMounts:
+              - name: data
+                mountPath: /var/lib/mysql
+                subPath: wordpress-db
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+

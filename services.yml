@@ -1,0 +1,6 @@
+---
+namespaces:
+  default:
+    network_policy:
+#      ingress:
+#        isolation: DefaultDeny

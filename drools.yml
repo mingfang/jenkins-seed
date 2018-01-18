@@ -1,0 +1,37 @@
+namespaces:
+  default:
+    services:
+      - name: drools
+        ports:
+          - port: 8080
+        annotations:
+          nginx:
+            - http:
+              - server: drools.*
+                paths:
+                  - path: /
+          icon: https://avatars0.githubusercontent.com/u/517980?v=3&s=200
+        pod:
+          replicas: 0
+          containers:
+          - name: drools
+            image: registry.rebelsoft.com/drools-workbench:latest
+            env:
+              - {name: JAVA_OPTS, value: "-Xms64m -Xmx4G -XX:MetaspaceSize=96M -XX:MaxMetaspaceSize=1G -Djava.net.preferIPv4Stack=true"}
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - "sh"
+                    - "-c"
+                    - >
+                      while ! /wildfly/bin/jboss-cli.sh -c --command="deployment-info --name=drools.war" | grep "OK"; do echo 'wait' && sleep 3; done;
+                      printf "/subsystem=keycloak/secure-deployment=drools.war:add\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf "/subsystem=keycloak/secure-deployment=drools.war:write-attribute(name=realm, value=master)\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf "/subsystem=keycloak/secure-deployment=drools.war:write-attribute(name=resource, value=openid-connect)\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf "/subsystem=keycloak/secure-deployment=drools.war:write-attribute(name=auth-server-url, value=https://login.rebelsoft.com/auth)\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf "/subsystem=keycloak/secure-deployment=drools.war:write-attribute(name=principal-attribute, value=preferred_username)\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf "/subsystem=keycloak/secure-deployment=drools.war:write-attribute(name=ssl-required, value=external)\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf "/subsystem=keycloak/secure-deployment=drools.war:write-attribute(name=public-client, value=true)\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf "/subsystem=undertow/server=default-server/http-listener=default/:write-attribute(name=proxy-address-forwarding,value=true)\n" | /wildfly/bin/jboss-cli.sh --connect;
+                      printf ":reload\n" | /wildfly/bin/jboss-cli.sh --connect;

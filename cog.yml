@@ -1,0 +1,107 @@
+namespaces:
+  default:
+    services:
+      - name: postgres-cog
+        ports:
+          - port: 5432
+        annotations:
+          icon: https://wiki.postgresql.org/images/thumb/7/71/PostgreSQL_logo.1color_blue.300x300.png/120px-PostgreSQL_logo.1color_blue.300x300.png
+        pod:
+          replicas: 0
+          containers:
+          - name: postgres
+            image: registry.rebelsoft.com/postgres:latest
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - >
+                      sleep 10;
+                      psql -U postgres --command="select 1";
+                      psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'cog'" | grep -q 1;
+                      if [ $? -eq 1 ]; then
+                        psql -U postgres -c "CREATE DATABASE cog";
+                      fi;
+                      psql -U postgres -tc "SELECT 1 FROM pg_user WHERE usename = 'cog'" | grep -q 1;
+                      if [ $? -eq 1 ]; then
+                        psql -U postgres -c "CREATE USER cog WITH PASSWORD 'cog'";
+                      fi;
+                      psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE cog TO cog";
+                      psql -U postgres -d cog -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"";
+            volumeMounts:
+              - name: data
+                mountPath: /usr/local/pgsql/data
+                subPath: postgres-cog
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+
+      - name: cog
+        ports:
+            - {name: api, port: 4000}
+            - {name: trigger, port: 4001}
+            - {name: service, port: 4002}
+            - {name: mqtt, port: 1883}
+        annotations:
+          nginx:
+            - http:
+              - server: cog.*
+                locations:
+                  - /
+        pod:
+          replicas: 0
+          containers:
+           - name: cog
+             image: operable/cog:latest
+             command:
+               - /home/operable/cog/scripts/docker-start
+             env:
+               - {name: COG_API_URL_BASE, value: "http://cog.rebelsoft.com"}
+               - {name: COG_API_PORT, value: "4000"}
+               - {name: COG_TRIGGER_URL_BASE, value: "http://cog.rebelsoft.com:4001"}
+               - {name: COG_TRIGGER_PORT, value: "4001"}
+               - {name: COG_SERVICE_URL_BASE, value: "http://cog.rebelsoft.com:4002"}
+               - {name: COG_SERVICE_PORT, value: "4002"}
+               - {name: COG_MQTT_HOST, value: "0.0.0.0"}
+               - {name: DATABASE_URL, value: "ecto://cog:cog@postgres-cog:5432/cog"}
+               - {name: COG_ALLOW_SELF_REGISTRATION, value: "1"}
+               - {name: COG_BOOTSTRAP_EMAIL_ADDRESS, value: "{{COG_BOOTSTRAP_EMAIL_ADDRESS}}"}
+               - {name: COG_BOOTSTRAP_FIRST_NAME, value: "Ming"}
+               - {name: COG_BOOTSTRAP_LAST_NAME, value: "Fang"}
+               - {name: COG_BOOTSTRAP_PASSWORD, value: "{{COG_BOOTSTRAP_PASSWORD}}"}
+               - {name: COG_BOOTSTRAP_USERNAME, value: "{{COG_BOOTSTRAP_USERNAME}}"}
+               - {name: COG_BOOTSTRAP_CHAT_HANDLE, value: "{{COG_BOOTSTRAP_CHAT_HANDLE}}"}
+               - {name: COG_SLACK_ENABLED, value: "1"}
+               - {name: SLACK_API_TOKEN, value: "{{COG_SLACK_API_TOKEN}}"}
+               - {name: RELAY_ID, value: "00000000-0000-0000-0000-000000000000"}
+               - {name: RELAY_COG_TOKEN, value: "{{COG_RELAY_COG_TOKEN}}"}
+
+      - name: cog-relay
+        ports:
+          - port: 80
+        pod:
+          replicas: 0
+          containers:
+            - name: relay
+              image: operable/relay:latest
+              command:
+                - /usr/local/bin/relay
+              env:
+                - {name: RELAY_COG_REFRESH_INTERVAL, value: "30s"}
+                - {name: RELAY_DOCKER_CLEAN_INTERVAL, value: "1m"}
+                - {name: RELAY_COG_HOST, value: "cog"}
+                - {name: RELAY_DYNAMIC_CONFIG_ROOT, value: "/tmp/bundle_configs"}
+                - {name: RELAY_ID, value: "00000000-0000-0000-0000-000000000000"}
+                - {name: RELAY_COG_TOKEN, value: "{{COG_RELAY_COG_TOKEN}}"}
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - name: docker-socket
+                  mountPath: /var/run/docker.sock
+          volumes:
+            - name: docker-socket
+              hostPath:
+                path: /var/run/docker.sock

@@ -1,0 +1,141 @@
+---
+namespaces:
+  default:
+    clusterRoles:
+    - name: fluentd-kubernetes
+      rules:
+      - apiGroups: [""] # "" indicates the core API group
+        resources: ["pods", "namespaces"]
+        verbs: ["get", "watch", "list"]
+
+    daemonsets:
+    - name: fluentd-kubernetes
+      clusterRoleBinding: fluentd-kubernetes
+      containers:
+      - name: fluentd-kubernetes
+        image: registry.rebelsoft.com/fluentd-kubernetes
+        imagePullPolicy: Always
+        env:
+        - {name: KUBERNETES_URL, value: "http://localhost:8080"}
+        - {name: ELASTICSEARCH, value: "elasticsearch"}
+        volumeMounts:
+        - {name: log, mountPath: /var/log}
+        - {name: libdocker, mountPath: /var/lib/docker}
+      - name: kubectl
+        image: registry.rebelsoft.com/kubernetes-node:latest
+        imagePullPolicy: Always
+        command: ["kubectl", "proxy", "--port=8080"]
+      volumes:
+      - {name: log, hostPath: {path: /var/log}}
+      - {name: libdocker, hostPath: {path: /var/lib/docker}}
+
+    services:
+    - name: elasticsearch-master
+      ports:
+      - {port: 9200, name: http}
+      - {port: 9300, name: tcp}
+      annotations:
+        nginx:
+        - http:
+          - server: elasticsearch-master.*
+            paths:
+            - path: /
+        group: logging
+      pod:
+        initContainers:
+        - name: init-sysctl
+          image: busybox
+          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+        replicas: 1
+        containers:
+        - name: elasticsearch
+          image: registry.rebelsoft.com/elasticsearch:latest
+          imagePullPolicy: Always
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9200
+            initialDelaySeconds: 30
+          env:
+          - {name: CLUSTER_NAME, value: LOGS}
+          - {name: NODE_DATA, value: "false"}
+
+    - name: elasticsearch
+      ports:
+      - {port: 9200, name: http}
+      - {port: 9300, name: tcp}
+      annotations:
+        nginx:
+        - http:
+          - server: elasticsearch.*
+            paths:
+            - path: /
+      stateful: true
+      pod:
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
+        initContainers:
+        - name: init-sysctl
+          image: busybox
+          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+        replicas: 2
+        containers:
+        - name: elasticsearch
+          image: registry.rebelsoft.com/elasticsearch:latest
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "5Gi"
+              cpu: "2"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9200
+            initialDelaySeconds: 30
+          env:
+          - {name: CLUSTER_NAME, value: LOGS}
+          - {name: NODE_MASTER, value: "false"}
+          - {name: UNICAST_HOSTS, value: "elasticsearch-master"}
+          - {name: POD_NAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+          - {name: PATH_DATA, value: "/data/$(POD_NAME)"}
+          - {name: ES_JAVA_OPTS, value: "-Xms2g -Xmx2g"}
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            subPath: elasticsearch
+
+    - name: kibana
+      ports:
+      - port: 5601
+      annotations:
+        nginx:
+        - http:
+          - server: kibana.*
+            paths:
+            - path: /
+      pod:
+        replicas: 1
+        containers:
+        - name: kibana
+          image: registry.rebelsoft.com/kibana:latest
+          imagePullPolicy: Always
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5601
+            initialDelaySeconds: 30
+          env:
+          - {name: ELASTICSEARCH_HOST, value: "elasticsearch"}

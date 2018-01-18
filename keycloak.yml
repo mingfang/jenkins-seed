@@ -1,0 +1,42 @@
+namespaces:
+  default:
+    secrets:
+      - name: keycloak-add-user
+        data:
+          keycloak-user: "{{keycloak_user}}"
+          keycloak-password: "{{keycloak_password}}"
+
+    services:
+      - name: keycloak
+        ports:
+          - {name: http, port: 8080}
+        annotations:
+          nginx:
+            - http:
+                - server: login.*
+                  paths:
+                    - path: /
+          icon: http://www.keycloak.org/resources/images/keycloak_logo_480x108.png
+        pod:
+          replicas: 1
+          containers:
+          - name: keycloak
+            image: ripper1:5000/keycloak:latest
+            scm: https://github.com/mingfang/docker-keycloak.git
+            env:
+              - {name: KEYCLOAK_USER, valueFrom: {secretKeyRef: {name: keycloak-add-user, key: keycloak-user}}}
+              - {name: KEYCLOAK_PASSWORD, valueFrom: {secretKeyRef: {name: keycloak-add-user, key: keycloak-password}}}
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - "sh"
+                    - "-c"
+                    - >
+                      ARGS="--server http://localhost:8080/auth --realm master --user $KEYCLOAK_USER --password $KEYCLOAK_PASSWORD";
+                      while ! /keycloak/bin/kcadm.sh get realms/master $ARGS; do sleep 3; done;
+                      /keycloak/bin/kcadm.sh create clients -s clientId=saml -s protocol=saml -s attributes.saml_idp_initiated_sso_url_name=saml -s "attributes.saml_assertion_consumer_url_post=https://rebelsoft.com/saml/acs" $ARGS;
+                      /keycloak/bin/kcadm.sh create clients -s clientId=openid-connect -s protocol=openid-connect -s "rootUrl=https://drools.rebelsoft.com" -s "baseUrl=/drools" -s 'redirectUris=["/drools/*"]' $ARGS;
+                      /keycloak/bin/kcadm.sh create identity-provider/instances -s alias=github -s providerId=github -s config.clientId=2844313b6902d981402a -s config.clientSecret=f4d1ba7985edd23679e3a39a21f6924f9f137945 -s config.defaultScope="user,read:org" $ARGS;
+                      printf "/subsystem=undertow/server=default-server/http-listener=default/:write-attribute(name=proxy-address-forwarding,value=true)\n" | /keycloak/bin/jboss-cli.sh --connect;
+                      printf ":reload\n" | /keycloak/bin/jboss-cli.sh --connect;

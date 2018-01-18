@@ -1,0 +1,250 @@
+---
+
+namespaces:
+  default:
+    services:
+      - name: kylo-nifi
+        ports:
+          - {name: http, port: 8080}
+        annotations:
+          nginx:
+            - http:
+                - server: kylo-nifi.*
+                  paths:
+                    - path: /
+          icon: https://pbs.twimg.com/media/C-SeLCcXkAA7shS.jpg
+        pod:
+          containers:
+            - name: nifi
+              image: registry.rebelsoft.com/nifi:latest
+
+      - name: kylo-activemq
+        ports:
+          - {name: http, port: 8161}
+          - {name: tcp, port: 61616}
+        annotations:
+          nginx:
+            - http:
+                - server: kylo-activemq.*
+                  paths:
+                    - path: /
+          icon: http://activemq.apache.org/images/activemq-logo.png
+        pod:
+          containers:
+            - name: activemq
+              image: registry.rebelsoft.com/activemq:latest
+
+      - name: kylo-db
+        ports:
+          - {port: 80,  name: http}
+          - {port: 3306, name: mysql}
+        annotations:
+          nginx:
+            - http:
+              - server: kylo-db.*
+                paths:
+                  - path: /
+        pod:
+          replicas: 1
+          containers:
+          - name: mysql
+            image: registry.rebelsoft.com/mysql:latest
+            volumeMounts:
+              - name: data
+                mountPath: /var/lib/mysql
+                subPath: kylo-db
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+
+      - name: kylo-es-master
+        ports:
+          - {port: 9200, name: http}
+          - {port: 9300, name: tcp}
+        annotations:
+          nginx:
+            - http:
+                - server: kylo-es-master.*
+                  locations:
+                    - /
+        pod:
+          replicas: 1
+          containers:
+          - name: elasticsearch
+            image: registry.rebelsoft.com/elasticsearch:latest
+            readinessProbe:
+              exec:
+                command: ["sh", "-c", "curl -s localhost:9200/_cat/shards|{grep UNASSIGNED || true}|awk '{print $1}'|xargs -I{} curl -s -XDELETE localhost:9200/{}"]
+              initialDelaySeconds: 30
+            livenessProbe:
+              httpGet:
+                path: /
+                port: 9200
+              initialDelaySeconds: 30
+            env:
+              - {name: CLUSTER_NAME, value: KYLO}
+              - {name: NODE_DATA, value: "false"}
+
+      - name: kylo-es
+        ports:
+          - {port: 9200, name: http}
+          - {port: 9300, name: tcp}
+        annotations:
+          nginx:
+            - http:
+                - server: kylo-es.*
+                  locations:
+                    - /
+        pod:
+          replicas: 2
+          containers:
+          - name: elasticsearch
+            image: registry.rebelsoft.com/elasticsearch:latest
+            scm: https://github.com/mingfang/docker-elasticsearch.git
+            resources:
+              requests:
+                memory: "1Gi"
+                cpu: "250m"
+              limits:
+                memory: "4Gi"
+                cpu: "500m"
+            readinessProbe:
+              httpGet:
+                path: /
+                port: 9200
+              initialDelaySeconds: 30
+            env:
+              - {name: CLUSTER_NAME, value: KYLO}
+              - {name: NODE_MASTER, value: "false"}
+              - {name: UNICAST_HOSTS, value: "kylo-es-master"}
+
+      - name: kylo-hadoop-master
+        ports:
+          - {name: http-namenode, port: 50070}
+          - {name: namenode-ipc, port: 9000}
+          - {name: http-resourcemanager, port: 8088}
+          - {name: resourcemanager-ipc-0, port: 8030}
+          - {name: resourcemanager-ipc-1, port: 8031}
+          - {name: resourcemanager-ipc-2, port: 8032}
+          - {name: resourcemanager-ipc-3, port: 8033}
+        annotations:
+          nginx:
+            - http:
+              - server: kylo-namenode.*
+                port: 50070
+                paths:
+                  - path: /
+              - server: kylo-resourcemanager.*
+                port: 8088
+                paths:
+                  - path: /
+                    directives:
+                      - sub_filter 'href=\"//' 'href=\"/proxy:';
+                      - sub_filter_once off;
+                  - path: ~ /proxy:(?<targetHost>[^\/?#]*)(?<targetPath>.*)
+                    no_proxy: true
+                    directives:
+                      - proxy_pass http://$targetHost$targetPath$is_args$args;
+                      - proxy_redirect ~http:\/\/.*\/(.+)$ http://$host$uri/$1;
+                      - sub_filter 'href=\"/' 'href=\"/proxy:$targetHost/';
+                      - sub_filter 'href=\"log' 'href=\"/proxy:$targetHost/log';
+                      - sub_filter 'href=\"http://' 'href=\"/proxy:';
+                      - sub_filter 'src=\"/' 'src=\"/proxy:$targetHost/';
+                      - sub_filter 'action=\"/' 'action=\"/proxy:$targetHost/';
+                      - sub_filter_once off;
+          icon: //hadoop.apache.org/images/hadoop-logo.jpg
+          group: kylo
+        pod:
+          replicas: 1
+          containers:
+            - name: hadoop
+              image: registry.rebelsoft.com/hadoop:latest
+              lifecycle:
+                postStart:
+                  exec:
+                    command:
+                      - sh
+                      - -c
+                      - >
+                        sv start namenode;
+                        sv start resourcemanager;
+
+      - name: kylo-hadoop-slave
+        ports:
+          - {name: http-datanode, port: 50075}
+          - {name: http-resourcenode, port: 8042}
+          - {name: datanode-ipc, port: 50020}
+          - {name: datanode-stream, port: 50010}
+        annotations:
+          nginx:
+            - http:
+              - server: kylo-datanode.*
+                port: 50075
+                paths:
+                  - path: /
+              - server: kylo-resourcenode.*
+                port: 8042
+                paths:
+                  - path: /
+          icon: //hadoop.apache.org/images/hadoop-logo.jpg
+          group: kylo
+        pod:
+          annotations:
+            scheduler.alpha.kubernetes.io/affinity:
+              podAntiAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  - labelSelector:
+                     name: "hadoop-slave"
+                    topologyKey: "kubernetes.io/hostname"
+          replicas: 1
+          containers:
+            - name: hadoop
+              image: registry.rebelsoft.com/hadoop:latest
+              env:
+                - {name: NAMENODE, value: kylo-hadoop-master}
+                - {name: RESOURCEMANAGER, value: kylo-hadoop-master}
+              lifecycle:
+                postStart:
+                  exec:
+                    command:
+                      - sh
+                      - -c
+                      - >
+                        sv start datanode;
+                        sv start nodemanager;
+
+      - name: kylo-db
+        ports:
+          - {port: 3306, name: mysql}
+          - {port: 80,  name: web}
+        annotations:
+          nginx:
+            - http:
+              - server: kylo-db.*
+                port: 80
+                paths:
+                  - path: /
+        pod:
+          replicas: 1
+          containers:
+          - name: mysql
+            image: registry.rebelsoft.com/mysql:latest
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - >
+                      mysqladmin --wait=30 ping;
+                      echo "CREATE DATABASE IF NOT EXISTS kylo;" | mysql;
+                      echo "GRANT ALL ON kylo.* TO 'kylo'@'%' IDENTIFIED BY 'kylo';" | mysql;
+            volumeMounts:
+              - name: data
+                mountPath: /var/lib/mysql
+                subPath: kylo-db
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs

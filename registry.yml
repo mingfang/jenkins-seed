@@ -1,0 +1,44 @@
+namespaces:
+  default:
+    services:
+      - name: registry
+        ports:
+          - port: 5000
+        annotations:
+          nginx:
+            - http:
+              - server: registry.*
+                paths:
+                  - path: /v2
+                    directives:
+                      - if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+                  - path: /v2/_catalog
+                    directives:
+                      - return 405;
+    #        - http:
+    #          - server: default
+    #            paths:
+    #              - path: /v2
+    #                directives:
+    #                  - if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+    #              - path: /v2/_catalog
+    #                directives:
+    #                  - return 405;
+          icon: //avatars2.githubusercontent.com/u/5429470?v=3&s=200
+          scheduler.alpha.kubernetes.io/critical-pod: ''
+        pod:
+          nodeSelector:
+            host: ripper1
+          containers:
+          - name: registry
+            image: registry:2
+            ports:
+            - {containerPort: 5000, hostPort: 5000}
+            volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+              subPath: registry
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs

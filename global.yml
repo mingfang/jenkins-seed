@@ -1,0 +1,36 @@
+namespaces:
+  default:
+    configmaps:
+      - name: global
+        data:
+          node-env: production
+          etcd-host: "{{ ETCD_HOST }}"
+          brokers: "kafka:9092"
+          tz: America/New_York
+
+    podpresets:
+      - name: global
+        spec:
+          env:
+            - {name: NODE_ENV, value: production}
+            - {name: ETCD_HOST, value: "{{ ETCD_HOST }}"}
+            - {name: BROKERS, value: "kafka:9092"}
+            - {name: TZ, value: "America/New_York"}
+          volumes:
+            - {name: log, emptyDir: {medium: "Memory", "sizeLimit": "0"}}
+          volumeMounts:
+            - {name: log, mountPath: /var/log}
+#          sidecars:
+#            - name: fluentd-kafka
+#              image: registry.rebelsoft.com/fluentd-kafka:latest
+#              volumeMounts:
+#                - {name: log, mountPath: /var/log}
+
+    limits:
+    - type: Container
+      default:
+        cpu: 4
+        memory: 4Gi
+      defaultRequest:
+        cpu: 100m
+        memory: 64Mi

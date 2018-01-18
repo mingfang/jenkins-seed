@@ -1,0 +1,44 @@
+---
+namespaces:
+  default:
+    services:
+      - name: odoo
+        ports:
+        - port: 8069
+        annotations:
+          nginx:
+          - http:
+            - server: odoo.*
+              paths:
+              - path: /
+          icon: https://odoocdn.com/openerp_website/static/src/img/assets/png/odoo_logo_plain.png
+        pod:
+          replicas: 0
+          containers:
+          - name: odoo
+            image: registry.rebelsoft.com/odoo:latest
+            scm: git@github.com:mingfang/docker-odoo.git
+            env:
+            - {name: DB_HOST, value: "postgres-odoo"}
+            - {name: DB_USER, value: "odoo"}
+            - {name: DB_PASSWORD, value: "postgres"}
+
+      - name: postgres-odoo
+        ports:
+          - port: 5432
+        annotations:
+          icon: https://wiki.postgresql.org/images/thumb/7/71/PostgreSQL_logo.1color_blue.300x300.png/120px-PostgreSQL_logo.1color_blue.300x300.png
+        pod:
+          replicas: 0
+          containers:
+          - name: postgres
+            image: registry.rebelsoft.com/postgres:latest
+            volumeMounts:
+              - name: data
+                mountPath: /usr/local/pgsql/data
+                subPath: postgres-odoo
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+

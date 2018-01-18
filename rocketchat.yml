@@ -1,0 +1,33 @@
+namespaces:
+  default:
+    services:
+      - name: rocketchat-mongodb
+        ports:
+          - port: 27017
+        pod:
+          replicas: 0
+          containers:
+            - name: mongodb
+              image: registry.rebelsoft.com/mongodb:latest
+              scm: git@github.com:mingfang/docker-mongodb.git
+
+      - name: rocketchat
+        ports:
+          - port: 3000
+        annotations:
+          nginx:
+            - http:
+              - server: chat.*
+                locations:
+                  - /
+          icon: https://rocket.chat/docs/assets/logo.png
+        pod:
+          replicas: 0
+          containers:
+            - name: rocketchat
+              image: registry.rebelsoft.com/rocketchat:latest
+              scm: git@github.com:mingfang/docker-rocketchat.git
+              env:
+                - {name: MONGO_URL, value: "mongodb://rocketchat-mongodb:27017/rocketchat"}
+                - {name: ROOT_URL, value: "https://chat.rebelsoft.com"}
+                - {name: PORT, value: "3000"}

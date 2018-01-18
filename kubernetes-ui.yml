@@ -1,0 +1,25 @@
+---
+namespaces:
+  default:
+    services:
+    - name: kubernetes-ui
+      ports:
+      - port: 8000
+      annotations:
+        nginx:
+        - http:
+          - server: default
+            locations:
+            - /kubernetes-ui
+        depends: [kubernetes]
+      clusterRoleBinding: cluster-admin
+      pod:
+        replicas: 1
+        containers:
+        - name: kubernetes-ui
+          image: registry.rebelsoft.com/kubernetes-ui:latest
+          env:
+          - {name: KMASTER, value: "http://localhost:8080"}
+        - name: kubectl
+          image: ripper1:5000/kubernetes-node:latest
+          command: ["kubectl", "proxy", "--port=8080"]

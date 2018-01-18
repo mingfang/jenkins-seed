@@ -1,0 +1,68 @@
+---
+namespaces:
+  default:
+    services:
+      - name: storm-nimbus
+        ports:
+          - {port: 6627, name: nimbus}
+        annotations:
+          icon: http://hortonworks.com/wp-content/uploads/2013/11/storm_logo.png
+          group: storm
+        pod:
+          replicas: 0
+          containers:
+          - name: nimbus
+            image: registry.rebelsoft.com/storm:latest
+            env:
+              - {name: STORM_DAEMON, value: nimbus}
+              - {name: ZOOKEEPERS, value: zookeeper}
+            livenessProbe:
+              exec:
+                command: ["sh", "-c", "[ echo stat|nc zookeeper 2181|grep $(hostname -i) ]"]
+              initialDelaySeconds: 60
+              timeoutSeconds: 5
+
+      - name: storm-ui
+        ports:
+          - {port: 8080, name: ui}
+        annotations:
+          nginx:
+            - http:
+              - server: storm.*
+                port: 8080
+                paths:
+                  - path: /
+          icon: http://hortonworks.com/wp-content/uploads/2013/11/storm_logo.png
+          group: storm
+        pod:
+          replicas: 0
+          containers:
+          - name: ui
+            image: registry.rebelsoft.com/storm:latest
+            env:
+              - {name: STORM_DAEMON, value: ui}
+              - {name: SEEDS, value: storm-nimbus}
+
+      - name: storm-supervisor
+        ports:
+          - {port: 6700, name: slot1}
+          - {port: 6701, name: slot2}
+          - {port: 6702, name: slot3}
+          - {port: 6703, name: slot4}
+        annotations:
+          icon: http://hortonworks.com/wp-content/uploads/2013/11/storm_logo.png
+          group: strom
+        pod:
+          replicas: 0
+          containers:
+          - name: supervisor
+            image: registry.rebelsoft.com/storm:latest
+            env:
+              - {name: STORM_DAEMON, value: supervisor}
+              - {name: ZOOKEEPERS, value: zookeeper}
+            livenessProbe:
+              exec:
+                command: ["sh", "-c", "[ echo stat|nc zookeeper 2181|grep $(hostname -i) ]"]
+              initialDelaySeconds: 60
+              timeoutSeconds: 5
+

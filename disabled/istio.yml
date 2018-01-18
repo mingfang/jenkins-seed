@@ -1,0 +1,194 @@
+---
+
+namespaces:
+  default:
+    configmaps:
+      - name: istio
+        data:
+          mesh: |-
+            # Uncomment the following line to enable mutual TLS between proxies
+            # authPolicy: MUTUAL_TLS
+            mixerAddress: istio-mixer:9091
+            discoveryAddress: istio-pilot:8080
+            ingressService: istio-ingress
+            zipkinAddress: zipkin:9411
+      - name: prometheus
+        data:
+          prometheus.yml: |-
+            global:
+              scrape_interval: 15s
+            scrape_configs:
+
+            - job_name: 'mixer'
+              # Override the global default and scrape targets from this job every 5 seconds.
+              scrape_interval: 5s
+              # metrics_path defaults to '/metrics'
+              # scheme defaults to 'http'.
+              static_configs:
+              - targets: ['istio-mixer:42422']
+    podpresets:
+      - name: istio
+        spec:
+          selector:
+            matchLabels:
+              name: istio
+          sidecars:
+            - name: istio-proxy
+              image: docker.io/istio/proxy_debug:0.1.6
+              args: ["proxy", "sidecar", "-v", "2"]
+              env:
+                - name: POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: POD_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.podIP
+              securityContext:
+                runAsUser: 1337
+          initContainers:
+            - name: init
+              image: docker.io/istio/init:0.1.6
+              args: ["-p","15001","-u","1337","-i", "172.27.0.0/16"]
+              securityContext:
+                capabilities:
+                  add: ["NET_ADMIN"]
+
+    services:
+      - name: istio-mixer
+        ports:
+          - {name: tcp, port: 9091}
+          - {name: configapi, port: 9094}
+          - {name: prometheus, port: 42422}
+        pod:
+          annotations:
+            alpha.istio.io/sidecar: ignore
+          replicas: 0
+          containers:
+            - name: istio-mixer
+              image: docker.io/istio/mixer:0.1.6
+              args:
+                - --configStoreURL=fs:///etc/opt/mixer/configroot
+                - --logtostderr
+                - -v
+                - "3"
+
+      - name: istio-pilot
+        ports:
+          - {name: http-discovery, port: 8080}
+          - {name: http-apiserver, port: 8081}
+        pod:
+          annotations:
+            alpha.istio.io/sidecar: ignore
+          replicas: 0
+          containers:
+            - name: discovery
+              image: docker.io/istio/pilot:0.1.6
+              args: ["discovery", "-v", "2"]
+              env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      apiVersion: v1
+                      fieldPath: metadata.namespace
+            - name: apiserver
+              image: docker.io/istio/pilot:0.1.6
+              args: ["apiserver", "-v", "2"]
+              ports:
+                - containerPort: 8081
+              env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      apiVersion: v1
+                      fieldPath: metadata.namespace
+
+      - name: istio-prometheus
+        ports:
+          - port: 9090
+        annotations:
+          nginx:
+            - http:
+              - server: istio-prometheus.*
+                locations:
+                  - /
+        pod:
+          annotations:
+            alpha.istio.io/sidecar: ignore
+          replicas: 0
+          containers:
+            - name: prometheus
+              image: quay.io/coreos/prometheus:v1.1.1
+              args:
+                - '-storage.local.retention=6h'
+                - '-storage.local.memory-chunks=500000'
+                - '-config.file=/etc/prometheus/prometheus.yml'
+              volumeMounts:
+                - name: config-volume
+                  mountPath: /etc/prometheus
+          volumes:
+            - name: config-volume
+              configMap:
+                name: prometheus
+
+      - name: istio-grafana
+        ports:
+          - port: 3000
+        annotations:
+          nginx:
+            - http:
+              - server: istio-grafana.*
+                locations:
+                  - /
+        pod:
+          annotations:
+            alpha.istio.io/sidecar: ignore
+          replicas: 0
+          containers:
+            - name: grafana
+              image: docker.io/istio/grafana:0.1.6
+              env:
+                - name: GRAFANA_PORT
+                  value: "3000"
+                - name: GF_AUTH_BASIC_ENABLED
+                  value: "false"
+                - name: GF_AUTH_ANONYMOUS_ENABLED
+                  value: "true"
+                - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+                  value: Admin
+                - name: GF_PATHS_DATA
+                  value: /data/grafana
+              volumeMounts:
+                - mountPath: /data/grafana
+                  name: grafana-data
+          volumes:
+            - name: grafana-data
+              emptyDir: {
+                "sizeLimit": "0"
+              }
+      - name: zipkin
+        ports:
+          - port: 9411
+        annotations:
+          nginx:
+            - http:
+                - server: zipkin.*
+                  paths:
+                    - path: /
+        pod:
+          replicas: 0
+          containers:
+            - name: zipkin
+              image: docker.io/openzipkin/zipkin:latest
+              env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      apiVersion: v1
+                      fieldPath: metadata.namespace
+

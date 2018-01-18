@@ -1,0 +1,64 @@
+namespaces:
+  default:
+    services:
+      - name: revive-mysql
+        ports:
+          - {port: 3306, name: mysql}
+          - {port: 80,  name: web}
+        annotations:
+          nginx:
+            - http:
+              - server: revive-mysql.*
+                port: 80
+                paths:
+                  - path: /
+        pod:
+          replicas: 0
+          containers:
+          - name: mysql
+            image: registry.rebelsoft.com/mysql:latest
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - >
+                      mysqladmin --wait=5 ping;
+                      echo "CREATE DATABASE IF NOT EXISTS revive;" | mysql;
+                      echo "GRANT ALL ON revive.* TO 'revive'@'%' IDENTIFIED BY 'revive';" | mysql;
+            volumeMounts:
+              - name: data
+                mountPath: /var/lib/mysql
+                subPath: revive-mysql
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+
+      - name: revive
+        ports:
+          - port: 80
+        annotations:
+          nginx:
+            - http:
+              - server: revive.*
+                paths:
+                  - path: /
+          icon: https://www.revive-adserver.com/media/logo-revive-2x.png
+        pod:
+          replicas: 0
+          containers:
+          - name: revive
+            image: registry.rebelsoft.com/revive:latest
+            volumeMounts:
+              - name: data
+                mountPath: /var/www/html/var
+                subPath: revive/var
+              - name: data
+                mountPath: /var/www/html/plugins
+                subPath: revive/plugins
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs

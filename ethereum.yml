@@ -1,0 +1,207 @@
+---
+namespaces:
+  default:
+    configmaps:
+      - name: ethereum
+        data:
+          networkid: "42"
+          nodekeyhex: fef1813a90ba69116af565c2a0db5ee7f8f1956edc095bea5259d5b66b18af80
+          bootnodes: enode://5956123b239290de0e6cd4d3033f59d3b749cc89eac7e564429f2298afa6da5ba86e1bd8d509a29f9d4ddc98d6bd7ffeff886143644f6547b95c5913923e9e62@ethereum-bootnode:30301
+          genesis.json: |-
+            {
+             "nonce": "0x0000000000000042",
+             "mixhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+             "difficulty": "0x400",
+             "alloc": {},
+             "coinbase": "0x0000000000000000000000000000000000000000",
+             "timestamp": "0x00",
+             "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+             "extraData": "0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa",
+             "gasLimit": "0xffffffff",
+             "config": {
+                "chainId": 42,
+                "homesteadBlock": 0,
+                "eip155Block": 0,
+                "eip158Block": 0
+             }
+            }
+          app.json: |-
+            [
+              {
+                "name"              : "node-app",
+                "script"            : "app.js",
+                "log_date_format"   : "YYYY-MM-DD HH:mm Z",
+                "merge_logs"        : false,
+                "watch"             : false,
+                "max_restarts"      : 10,
+                "exec_interpreter"  : "node",
+                "exec_mode"         : "fork_mode",
+                "env":
+                {
+                  "NODE_ENV"        : "production",
+                  "RPC_HOST"        : "localhost",
+                  "RPC_PORT"        : "8545",
+                  "LISTENING_PORT"  : "30303",
+                  "INSTANCE_NAME"   : "app",
+                  "WS_SERVER"       : "ws://ethereum-netstats:3000",
+                  "WS_SECRET"       : "secret",
+                  "VERBOSITY"       : 2
+                }
+              }
+            ]
+
+    services:
+      - name: ethereum-bootnode
+        ports:
+          - {name: udp, port: 30301, protocol: UDP}
+        annotations:
+          icon: https://pbs.twimg.com/card_img/868767613723213825/NFjE5LK8?format=png&name=144x144_2
+        pod:
+          replicas: 0
+          containers:
+            - name: bootnode
+              image: registry.rebelsoft.com/ethereum:latest
+              command:
+                - sh
+                - -c
+                - >
+                  runsv /etc/service/bootnode
+              env:
+                - name: NETWORKID
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ethereum
+                      key: networkid
+                - name: NODEKEYHEX
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ethereum
+                      key: nodekeyhex
+
+      - name: ethereum-node
+        ports:
+          - {name: tcp, port: 30303}
+          - {name: http-rpc, port: 8545}
+        annotations:
+          icon: https://pbs.twimg.com/card_img/868767613723213825/NFjE5LK8?format=png&name=144x144_2
+        pod:
+          replicas: 0
+          containers:
+            - name: node
+              image: registry.rebelsoft.com/ethereum:latest
+              command:
+                - sh
+                - -c
+                - >
+                  geth init /genesis.json;
+                  echo "password" > password;
+                  geth account new --password password;
+                  runsv /etc/service/node
+              env:
+                - name: NETWORKID
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ethereum
+                      key: networkid
+                - name: BOOTNODES
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ethereum
+                      key: bootnodes
+              volumeMounts:
+                - name: ethereum
+                  mountPath: /genesis.json
+                  subPath: genesis.json
+          volumes:
+            - name: ethereum
+              configMap:
+                name: ethereum
+
+      - name: ethereum-miner
+        ports:
+          - {name: tcp, port: 30303}
+          - {name: http-rpc, port: 8545}
+        annotations:
+          icon: https://pbs.twimg.com/card_img/868767613723213825/NFjE5LK8?format=png&name=144x144_2
+        pod:
+          replicas: 0
+          containers:
+            - name: miner
+              image: registry.rebelsoft.com/ethereum:latest
+              command:
+                - sh
+                - -c
+                - >
+                  geth init /genesis.json;
+                  echo "password" > password;
+                  geth account new --password password;
+                  runsv /etc/service/miner
+              env:
+                - name: NETWORKID
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ethereum
+                      key: networkid
+                - name: BOOTNODES
+                  valueFrom:
+                    configMapKeyRef:
+                      name: ethereum
+                      key: bootnodes
+              volumeMounts:
+                - name: ethereum
+                  mountPath: /genesis.json
+                  subPath: genesis.json
+            - name: eth-net-intelligence-api
+              image: registry.rebelsoft.com/eth-net-intelligence-api
+              volumeMounts:
+                - name: ethereum
+                  mountPath: /eth-net-intelligence-api/app.json
+                  subPath: app.json
+          volumes:
+            - name: ethereum
+              configMap:
+                name: ethereum
+
+      - name: ethereum-netstats
+        ports:
+          - {name: http, port: 3000}
+        annotations:
+          nginx:
+            - http:
+               - server: ethereum.*
+                 paths:
+                   - path: /
+          icon: https://pbs.twimg.com/card_img/868767613723213825/NFjE5LK8?format=png&name=144x144_2
+        pod:
+          replicas: 0
+          containers:
+            - name: eth-netstats
+              image: registry.rebelsoft.com/eth-netstats
+              env:
+                - {name: WS_SECRET, value: "secret"}
+
+      - name: ethereum-mainnet
+        ports:
+          - {name: tcp, port: 30303}
+          - {name: http-rpc, port: 8545}
+        annotations:
+          icon: https://pbs.twimg.com/card_img/868767613723213825/NFjE5LK8?format=png&name=144x144_2
+        pod:
+          replicas: 0
+          containers:
+            - name: node
+              image: registry.rebelsoft.com/ethereum:latest
+              command:
+                - sh
+                - -c
+                - >
+                  runsv /etc/service/node
+              volumeMounts:
+                - name: chaindata
+                  mountPath: /root/.ethereum/geth/chaindata
+                  subPath: ethereum-mainnet
+          volumes:
+            - name: chaindata
+              persistentVolumeClaim:
+                claimName: cephfs
+

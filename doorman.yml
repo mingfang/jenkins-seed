@@ -1,0 +1,62 @@
+namespaces:
+  default:
+    services:
+      - name: doorman-postgres
+        ports:
+          - port: 5432
+        annotations:
+          icon: https://wiki.postgresql.org/images/thumb/7/71/PostgreSQL_logo.1color_blue.300x300.png/120px-PostgreSQL_logo.1color_blue.300x300.png
+        pod:
+          replicas: 0
+          containers:
+            - name: postgres
+              image: registry.rebelsoft.com/postgres:latest
+              lifecycle:
+                postStart:
+                  exec:
+                    command:
+                      - sh
+                      - -c
+                      - >
+                        sleep 10;
+                        psql -U postgres --command="select 1";
+                        psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'doorman'" | grep -q 1;
+                        if [ $? -eq 1 ]; then
+                          psql -U postgres -c "CREATE DATABASE doorman";
+                        fi;
+                        psql -U postgres -tc "SELECT 1 FROM pg_user WHERE usename = 'doorman'" | grep -q 1;
+                        if [ $? -eq 1 ]; then
+                          psql -U postgres -c "CREATE USER doorman WITH PASSWORD 'doorman'";
+                        fi;
+                        psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE doorman TO doorman";
+              volumeMounts:
+                - name: data
+                  mountPath: /usr/local/pgsql/data
+                  subPath: doorman-postgres
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: cephfs
+
+      - name: doorman
+        ports:
+          - port: 5000
+        annotations:
+          nginx:
+            - http:
+              - server: doorman.*
+                locations:
+                  - /
+          icon: https://osquery.io/static/site/img/logo.png
+        pod:
+          replicas: 0
+          containers:
+            - name: doorman
+              image: registry.rebelsoft.com/doorman:latest
+              env:
+                - {name: POSTGRES_USER, value: "doorman"}
+                - {name: POSTGRES_PASSWORD, value: "doorman"}
+                - {name: POSTGRES_DATABASE, value: "doorman"}
+                - {name: POSTGRES_PORT, value: "tcp://doorman-postgres:5432"}
+                - {name: DOORMAN_SETTINGS, value: "/doorman/docker/default-settings.cfg"}
+                - {name: DOORMAN_ENROLL_SECRET, value: "doorman"}

@@ -1,0 +1,40 @@
+---
+namespaces:
+  default:
+    services:
+      - name: fnserver
+        stateful: false
+        ports:
+        - {name: http, port: 8080}
+        annotations:
+          nginx:
+          - http:
+            - server: fnserver.*
+              paths:
+              - path: /
+        pod:
+          containers:
+          - name: fnserver
+            image: fnproject/fnserver:latest
+            volumeMounts:
+            - {name: docker,  mountPath: /var/run/docker.sock}
+          volumes:
+          - {name: docker, hostPath: {path: /var/run/docker.sock}}
+
+      - name: fnui
+        stateful: false
+        ports:
+        - {name: http, port: 4000}
+        annotations:
+          nginx:
+          - http:
+            - server: fnui.*
+              paths:
+              - path: /
+        pod:
+          containers:
+          - name: fnui
+            image: fnproject/ui:latest
+            env:
+            - {name: FN_API_URL, value: "http://fnserver:8080"}
+

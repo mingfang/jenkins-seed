@@ -1,0 +1,72 @@
+namespaces:
+  default:
+    configmaps:
+    - name: guacamole
+      data:
+        guacamole.properties: |-
+          mysql-hostname: guacamole-db
+          mysql-port: 3306
+          mysql-database: guacamole
+          mysql-username: guacamole
+          mysql-password: guacamole
+
+    services:
+    - name: guacamole-db
+      ports:
+        - {port: 3306, name: mysql}
+        - {port: 80,  name: web}
+      annotations:
+        nginx:
+          - http:
+            - server: guacamole-db.*
+              port: 80
+              paths:
+                - path: /
+      pod:
+        replicas: 1
+        containers:
+        - name: mysql
+          image: registry.rebelsoft.com/mysql:latest
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - >
+                    mysqladmin --wait=30 ping;
+                    echo "CREATE DATABASE IF NOT EXISTS guacamole;" | mysql;
+                    echo "GRANT ALL ON guacamole.* TO 'guacamole'@'%' IDENTIFIED BY 'guacamole';" | mysql;
+                    wget -O - http://www-us.apache.org/dist/incubator/guacamole/0.9.12-incubating/binary/guacamole-auth-jdbc-0.9.12-incubating.tar.gz | tar zx;
+                    cat guacamole*/mysql/schema/*.sql | mysql --database=guacamole;
+                    rm -r guacamole*
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+              subPath: guacamole-db
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
+
+    - name: guacamole
+      ports:
+        - port: 8080
+      annotations:
+        nginx:
+          - http:
+            - server: guacamole.*
+              paths:
+                - path: /
+      pod:
+        containers:
+        - name: guacamole
+          image: registry.rebelsoft.com/guacamole:latest
+          volumeMounts:
+            - name: config
+              mountPath: /guacamole/guacamole.properties
+              subPath: guacamole.properties
+        volumes:
+          - name: config
+            configMap:
+              name: guacamole

@@ -1,0 +1,18 @@
+namespaces:
+  default:
+    services:
+      - name: harviewer
+        ports:
+          - port: 80
+        annotations:
+          nginx:
+            - http:
+                - server: harviewer.*
+                  paths:
+                    - path: /
+        pod:
+          replicas: 0
+          containers:
+          - name: harviewer
+            image: registry.rebelsoft.com/harviewer:latest
+            scm: git@github.com:mingfang/docker-harviewer.git

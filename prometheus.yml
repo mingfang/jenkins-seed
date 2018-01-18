@@ -1,0 +1,58 @@
+namespaces:
+  default:
+    services:
+    - name: prometheus
+      ports:
+        - {port: 9090, name: prometheus}
+        - {port: 9093, name: alertmanager}
+      annotations:
+        nginx:
+          - http:
+            - server: prometheus.*
+              port: 9090
+              paths:
+              - path: /
+          - http:
+            - server: alertmanager.*
+              port: 9093
+              paths:
+              - path: /
+        icon: //avatars3.githubusercontent.com/u/3380462?v=3&s=200
+        depends: [pushgateway]
+        group: prometheus
+      pod:
+        replicas: 1
+        containers:
+        - name: prometheus
+          image: registry.rebelsoft.com/prometheus:latest
+          scm: https://github.com/mingfang/docker-prometheus.git
+          env:
+            - {name: KMASTER, value: "{{ ETCD_HOST }}:8080"}
+            - {name: ETCD_URL, value: "http://{{ ETCD_HOST }}:4001"}
+
+    - name: grafana
+      ports:
+      - port: 3000
+      annotations:
+        nginx:
+        - http:
+          - server: grafana.*
+            paths:
+            - path: /
+        icon: http://grafana.org/assets/img/logo_new_transparent_200x48.png
+        group: prometheus
+      pod:
+        replicas: 1
+        containers:
+        - name: grafana
+          image: registry.rebelsoft.com/grafana:latest
+          env:
+          - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "true"}
+        - name: gfdatasource
+          image: quay.io/weaveworks/gfdatasource:master-915ed42
+          args:
+          - --grafana-url=http://admin:admin@localhost:3000/api
+          - --data-source-url=http://prometheus:9090/
+          - --name=Prometheus
+          - --type=prometheus
+          - --update-interval=10

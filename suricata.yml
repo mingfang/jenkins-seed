@@ -1,0 +1,18 @@
+namespaces:
+  default:
+    services:
+      - name: suricata
+        ports:
+          - port: 8000
+        annotations:
+          nginx:
+            - http:
+              - server: suricata.*
+                paths:
+                  - path: /
+          icon: https://idsips.files.wordpress.com/2015/10/suri-400x400.png
+        pod:
+          replicas: 0
+          containers:
+          - name: suricata
+            image: registry.rebelsoft.com/suricata:latest

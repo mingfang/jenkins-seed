@@ -1,0 +1,35 @@
+---
+namespace:
+  default:
+    services:
+      - name: clair
+        ports:
+          - port: 6060
+        annotations:
+          nginx:
+            - http:
+              - server: clair.*
+                port: 6060
+                paths:
+                  - path: /
+          icon: https://raw.githubusercontent.com/coreos/clair/master/img/Clair_horizontal_color.png
+        pod:
+          replicas: 0
+          containers:
+          - name: clair
+            image: registry.rebelsoft.com/clair:latest
+            scm: git@github.com:mingfang/docker-clair.git
+            env:
+              - {name: DATABASE_SOURCE, value: "postgres://postgres:postgres@clair-postgres:5432/postgres?sslmode=disable"}
+
+      - name: clair-postgres
+        ports:
+          - port: 5432
+        annotations:
+          icon: https://wiki.postgresql.org/images/thumb/7/71/PostgreSQL_logo.1color_blue.300x300.png/120px-PostgreSQL_logo.1color_blue.300x300.png
+        pod:
+          replicas: 1
+          containers:
+          - name: postgres
+            image: registry.rebelsoft.com/postgres:latest
+

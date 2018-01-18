@@ -1,0 +1,23 @@
+namespaces:
+  default:
+    services:
+      - name: teiid
+        ports:
+          - {name: http, port: 8080}
+          - {name: http-admin, port: 9990}
+        annotations:
+          nginx:
+            - http:
+                - server: teiid.*
+                  paths:
+                    - path: /
+          icon: http://design.jboss.org/teiid/logo/images/teiid_logo_450px.png
+        pod:
+          replicas: 0
+          containers:
+          - name: teiid
+            image: registry.rebelsoft.com/teiid:latest
+            scm: https://github.com/mingfang/docker-teiid.git
+            env:
+              - {name: ADMIN_USER, valueFrom: {secretKeyRef: {name: keycloak-add-user, key: keycloak-user}}}
+              - {name: ADMIN_PASSWORD, valueFrom: {secretKeyRef: {name: keycloak-add-user, key: keycloak-password}}}

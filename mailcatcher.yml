@@ -1,0 +1,20 @@
+namespaces:
+  default:
+    services:
+      - name: mailcatcher
+        ports:
+          - {port: 1025, name: stmp}
+          - {port: 1080, name: web}
+        annotations:
+          nginx:
+            - http:
+                - server: mailcatcher.*
+                  port: 1080
+                  paths:
+                    - path: /
+        pod:
+          replicas: 0
+          containers:
+          - name: mailcatcher
+            image: registry.rebelsoft.com/mailcatcher:latest
+            scm: git@github.com:mingfang/docker-mailcatcher.git

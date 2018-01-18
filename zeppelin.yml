@@ -1,0 +1,36 @@
+namespaces:
+  default:
+    services:
+    - name: zeppelin
+      ports:
+      - port: 8080
+      annotations:
+        nginx:
+        - http:
+          - server: zeppelin.*
+            port: 8080
+            paths:
+            - path: /
+        icon: //hortonworks.com/wp-content/uploads/2016/03/ZeppelinLogo.png
+      pod:
+        nodeSelector:
+          host: ripper1
+        replicas: 1
+        containers:
+        - name: zeppelin
+          image: registry.rebelsoft.com/zeppelin
+          env:
+          - {name: ZEPPELIN_PORT, value: "8080"}
+          volumeMounts:
+          - name: data
+            mountPath: /zeppelin/notebook
+            subPath: zeppelin-notebook
+          - name: md1
+            mountPath: /mnt/md1
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
+        - name: md1
+          hostPath:
+            path: /mnt/md1

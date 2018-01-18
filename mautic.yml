@@ -1,0 +1,68 @@
+---
+namespaces:
+  default:
+    services:
+      - name: mautic
+        ports:
+          - port: 80
+        annotations:
+          nginx:
+          - http:
+            - server: contact.*
+              paths:
+              - path: /
+          icon: https://www.mautic.org/media/logos/logo/Mautic_Logo_LB.png
+        pod:
+          containers:
+          - name: mautic
+            image: registry.rebelsoft.com/mautic:latest
+            scm: https://github.com/mingfang/docker-mautic.git
+    #        livenessProbe:
+    #          httpGet:
+    #            path: /
+    #            port: 80
+    #          initialDelaySeconds: 30
+            volumeMounts:
+              - name: data
+                mountPath: /var/www/html/app/local
+                subPath: mautic-local
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+
+      - name: mautic-db
+        ports:
+          - {port: 3306, name: mysql}
+          - {port: 80,  name: web}
+        annotations:
+          nginx:
+            - http:
+              - server: mautic-db.*
+                port: 80
+                paths:
+                  - path: /
+        pod:
+          replicas: 1
+          containers:
+          - name: mysql
+            image: registry.rebelsoft.com/mysql:latest
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - >
+                      mysqladmin --wait=30 ping;
+                      echo "CREATE DATABASE IF NOT EXISTS mautic;" | mysql;
+                      echo "GRANT ALL ON mautic.* TO 'mautic'@'%' IDENTIFIED BY 'mautic';" | mysql;
+            volumeMounts:
+              - name: data
+                mountPath: /var/lib/mysql
+                subPath: mautic-db
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+

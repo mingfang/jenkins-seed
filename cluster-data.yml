@@ -1,0 +1,33 @@
+namespaces:
+  default:
+    secrets:
+      - name: ceph-secret
+        data:
+          key: "{{CEPH_SECRET}}"
+
+    persistentVolumes:
+      - name: cephfs
+        spec:
+          storageClassName: "cephfs"
+          capacity:
+            storage: 100Gi
+          accessModes:
+            - ReadWriteMany
+          persistentVolumeReclaimPolicy: Retain
+          cephfs:
+            monitors:
+              - 192.168.2.89
+              - 192.168.2.39
+            user: admin
+            secretRef:
+              name: ceph-secret
+
+    persistentVolumeClaims:
+      - name: cephfs
+        spec:
+          storageClassName: "cephfs"
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: 100Gi

@@ -1,0 +1,36 @@
+namespaces:
+  default:
+    services:
+      - name: minecraft
+        ports:
+          - {port: 25565, name: minecraft}
+          - {port: 9001,  name: fontail}
+          - {port: 8123,  name: dynmap}
+        annotations:
+          nginx:
+            - http:
+              - server: minecraft.*
+                port: 9001
+                locations:
+                  - /
+              - server: dynmap.*
+                port: 8123
+                locations:
+                  - /
+            - stream:
+                - listen: 25565
+          icon: //images.wikia.com/yogbox/images/d/dd/Minecraft_Block.svg
+        pod:
+          replicas: 1
+          containers:
+          - name: minecraft
+            image: registry.rebelsoft.com/minecraft:latest
+            scm: https://github.com/mingfang/docker-minecraft.git
+            volumeMounts:
+              - name: data
+                mountPath: /data
+                subPath: minecraft
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs

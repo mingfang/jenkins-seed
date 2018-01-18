@@ -1,0 +1,28 @@
+namespaces:
+  default:
+    services:
+    - name: gitlab
+      ports:
+        - {name: http, port: 80}
+      annotations:
+        nginx:
+          - http:
+            - server: gitlab.*
+              paths:
+                - path: /
+        icon: https://gitlab.com/uploads/system/project/avatar/13083/logo-extra-whitespace.png
+      pod:
+        containers:
+          - name: gitlab
+            image: registry.rebelsoft.com/gitlab:latest
+            volumeMounts:
+              - name: data
+                mountPath: /data
+                subPath: gitlab-postgres
+              - name: data
+                mountPath: /home/git/repositories
+                subPath: gitlab-repositories
+        volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs

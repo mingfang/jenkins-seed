@@ -1,0 +1,46 @@
+---
+namespaces:
+  default:
+    services:
+      - name: httpbin
+        stateful: false
+        ports:
+          - {name: http, port: 5000}
+        annotations:
+            nginx:
+              - http:
+                  - server: httpbin.*
+                    locations:
+                      - /
+              - http:
+                  - server: default
+                    locations:
+                      - /status
+                      - /html
+                      - /get
+            intranet:
+              - http:
+                  - server: default
+                    locations:
+                      - /get
+        autoscaler:
+          minReplicas: 1
+          maxReplicas: 9
+          targetCPUUtilizationPercentage: 10
+        pod:
+          containers:
+            - name: httpbin
+              image: registry.rebelsoft.com/httpbin:latest
+              scm: https://github.com/mingfang/docker-httpbin.git
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  subPath: test/anotherone/three
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+        networkpolicy:
+          from: [knginx, intranet]
+          ports: [5000]
+

@@ -1,0 +1,37 @@
+namespaces:
+  default:
+    services:
+      - name: solr
+        ports:
+          - port: 8983
+        annotations:
+          nginx:
+            - http:
+                - server: solr.*
+                  locations:
+                    - /
+          icon: http://lucene.apache.org/solr/assets/identity/Solr_Logo_on_white.png
+        pod:
+          replicas: 2
+          containers:
+          - name: solr
+            image: registry.rebelsoft.com/solr:latest
+            scm: https://github.com/mingfang/docker-solr.git
+            env:
+              - {name: ZOOKEEPER, value: "solr-zookeeper"}
+            livenessProbe:
+              exec:
+                command: ["sh", "-c", "/solr/bin/solr status"]
+              initialDelaySeconds: 30
+              timeoutSeconds: 5
+
+      - name: solr-zookeeper
+        ports:
+          - port: 2181
+        annotations:
+          icon: //zookeeper.apache.org/images/zookeeper_small.gif
+        pod:
+          containers:
+          - name: zookeeper
+            image: registry.rebelsoft.com/zookeeper:latest
+            scm: https://github.com/mingfang/docker-zookeeper.git

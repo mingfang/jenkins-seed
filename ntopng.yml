@@ -1,0 +1,16 @@
+namespaces:
+  default:
+    services:
+      - name: ntopng
+        ports:
+          - port: 3000
+        annotations:
+          icon: http://www.ntop.org/wp-content/uploads/2015/05/ntop.png
+        pod:
+          hostNetwork: true
+          nodeSelector:
+            host: ripper1
+          replicas: 0
+          containers:
+            - name: ntopng
+              image: registry.rebelsoft.com/ntopng:latest

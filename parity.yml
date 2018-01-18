@@ -1,0 +1,155 @@
+namespaces:
+  default:
+    configmaps:
+    - name: parity
+      data:
+        app.json: |-
+          [
+            {
+              "name"              : "node-app",
+              "script"            : "app.js",
+              "log_date_format"   : "YYYY-MM-DD HH:mm Z",
+              "merge_logs"        : false,
+              "watch"             : false,
+              "max_restarts"      : 10,
+              "exec_interpreter"  : "node",
+              "exec_mode"         : "fork_mode",
+              "env":
+              {
+                "NODE_ENV"        : "production",
+                "RPC_HOST"        : "localhost",
+                "RPC_PORT"        : "8545",
+                "LISTENING_PORT"  : "30303",
+                "WS_SERVER"       : "http://parity-netstats:3000",
+                "WS_SECRET"       : "secret",
+                "VERBOSITY"       : 1
+              }
+            }
+          ]
+
+    services:
+    - name: parity
+      ports:
+      - {name: http-rpc, port: 8545}
+      - {name: tcp, port: 30303, protocol: TCP}
+      stateful: true
+      pod:
+        nodeSelector:
+          host: ryzen1
+        replicas: 0
+        containers:
+        - name: parity
+          image: registry.rebelsoft.com/parity:latest
+          env:
+          - {name: ARGS, value: "--author 0x7cE62e9e2AecC82159B90c2bCd8cDE16e9046aD4 --stratum --tracing on --pruning archive --chain mainnet --cache-size 10240 --cache-size-state 1024 --cache-size-db 4096 --min-peers 128 --tx-queue-mem-limit 0 --tx-queue-size 18446744073709551615 --no-periodic-snapshot --no-serve-light --no-ui --no-ws --no-dapps --no-hardware-wallets --no-secretstore --no-secretstore-http --jsonrpc-interface all --jsonrpc-hosts all --jsonrpc-apis safe"}
+          resources:
+            requests:
+              cpu: "8"
+              memory: "9Gi"
+            limits:
+              cpu: "16"
+              memory: "12Gi"
+          ports:
+            - {containerPort: 30303, hostPort: 30303, protocol: TCP}
+            - {containerPort: 30303, hostPort: 30303, protocol: UDP}
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            subPath: parity-data
+        - name: eth-net-intelligence-api
+          image: registry.rebelsoft.com/eth-net-intelligence-api
+          volumeMounts:
+            - name: configmap
+              mountPath: /eth-net-intelligence-api/app.json
+              subPath: app.json
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
+        - name: configmap
+          configMap:
+            name: parity
+
+    - name: parity-netstats
+      ports:
+      - {name: http, port: 3000}
+      annotations:
+        nginx:
+        - http:
+          - server: parity-netstats.*
+            paths:
+            - path: /
+        icon: https://pbs.twimg.com/card_img/868767613723213825/NFjE5LK8?format=png&name=144x144_2
+      pod:
+        replicas: 1
+        containers:
+        - name: eth-netstats
+          image: registry.rebelsoft.com/eth-netstats
+          env:
+          - {name: WS_SECRET, value: "secret"}
+
+    - name: parity-internal
+      ports:
+      - {name: http-rpc, port: 8545}
+      - {name: tcp, port: 30303, protocol: TCP}
+      annotations:
+        nginx:
+        - http:
+          - server: parity.*
+            port: 8545
+            paths:
+            - path: /
+      stateful: true
+      pod:
+        nodeSelector:
+          host: ripper1
+        replicas: 1
+        containers:
+        - name: parity
+          image: registry.rebelsoft.com/parity:latest
+          env:
+          - {name: ARGS, value: "--jsonrpc-server-threads 10 --jsonrpc-threads 10 --tracing on --pruning archive --chain mainnet --db-compaction ssd --cache-size 30240 --cache-size-state 8024 --cache-size-db 8096 --min-peers 5 --tx-queue-mem-limit 0 --tx-queue-size 18446744073709551615 --no-periodic-snapshot --no-serve-light --no-ui --no-ws --no-dapps --no-hardware-wallets --no-secretstore --no-secretstore-http --jsonrpc-interface all --jsonrpc-hosts all --jsonrpc-apis safe"}
+          - {name: POD_NAME, valueFrom: {fieldRef: {fieldPath: metadata.name}}}
+          - {name: DATA, value: "/parity-data"}
+          resources:
+            requests:
+              cpu: "2"
+              memory: "5Gi"
+            limits:
+              memory: "32Gi"
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            subPath: parity-internal
+          - name: parity-data
+            mountPath: /parity-data
+          - name: md1
+            mountPath: /mnt/md1
+          livenessProbe:
+            exec:
+              command:
+              - sh
+              - -c
+              - >
+                curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545
+            initialDelaySeconds: 300
+            timeoutSeconds: 60
+        - name: eth-net-intelligence-api
+          image: registry.rebelsoft.com/eth-net-intelligence-api
+          volumeMounts:
+            - name: configmap
+              mountPath: /eth-net-intelligence-api/app.json
+              subPath: app.json
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
+        - name: configmap
+          configMap:
+            name: parity
+        - name: parity-data
+          hostPath:
+            path: /mnt/md0/parity-data
+        - name: md1
+          hostPath:
+            path: /mnt/md1

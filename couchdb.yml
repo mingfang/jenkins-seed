@@ -1,0 +1,27 @@
+namespaces:
+  default:
+    services:
+      - name: couchdb
+        ports:
+          - port: 5984
+        annotations:
+          nginx:
+            - http:
+              - server: couchdb.*
+                paths:
+                  - path: /
+          icon: http://docs.couchdb.org/en/2.0.0/_static/logo.png
+        pod:
+          replicas: 0
+          containers:
+          - name: couchdb
+            image: registry.rebelsoft.com/couchdb:latest
+            scm: https://github.com/mingfang/docker-couchdb.git
+            volumeMounts:
+              - name: data
+                mountPath: /couchdb/data
+                subPath: couchdb
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs

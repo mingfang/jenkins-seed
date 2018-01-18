@@ -1,0 +1,19 @@
+namespaces:
+  default:
+    services:
+    - name: bitcoin
+      ports:
+      - port: 8333
+      pod:
+        replicas: 0
+        containers:
+        - name: bitcoin
+          image: registry.rebelsoft.com/bitcoin:latest
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            subPath: bitcoin-data
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs

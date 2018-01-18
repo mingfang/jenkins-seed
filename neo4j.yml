@@ -1,0 +1,22 @@
+namespaces:
+  default:
+    services:
+      - name: neo4j
+        ports:
+          - {name: http, port: 7474}
+          - {name: bolt, port: 7687}
+        annotations:
+          nginx:
+            - http:
+                - server: neo4j.*
+                  paths:
+                    - path: /
+                - server: neo4j-bolt.*
+                  paths:
+                    - path: /
+                  port: 7687
+          icon: http://info.neo4j.com/rs/773-GON-065/images/neo4j_logo.png
+        pod:
+          containers:
+            - name: neo4j
+              image: registry.rebelsoft.com/neo4j:latest

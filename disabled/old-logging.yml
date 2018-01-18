@@ -1,0 +1,97 @@
+namespaces:
+  default:
+    services:
+      - name: rtail
+        ports:
+          - port: 8888
+        annotations:
+          nginx:
+            - http:
+                - server: rtail.*
+                  locations:
+                    - /
+          depends: [kafka, zookeeper, elasticsearch]
+          group: logging
+        pod:
+          replicas: 1
+          containers:
+          - name: rtail
+            image: registry.rebelsoft.com/rtail:latest
+            livenessProbe:
+              httpGet:
+                path: /
+                port: 8888
+              initialDelaySeconds: 30
+
+      - name: kafka-manager
+        ports:
+          - port: 9000
+        annotations:
+          nginx:
+            - http:
+                - server: kafka-manager.*
+                  locations:
+                    - /
+          depends: [kafka]
+          group: logging
+        pod:
+          replicas: 0
+          containers:
+          - name: kafka-manager
+            image: registry.rebelsoft.com/kafka-manager:latest
+            scm: https://github.com/mingfang/docker-kafka-manager.git
+            env:
+              - {name: ZK_HOSTS, value: "zookeeper:2181"}
+
+      - name: kafka
+        ports:
+          - {port: 9092, name: kafka}
+          - {port: 9999, name: jmx}
+        annotations:
+          icon: //kafka.apache.org/images/kafka_logo.png
+          depends: [zookeeper]
+          group: logging
+        pod:
+          annotations:
+            prometheus.io/scrape: true
+            prometheus.io/port: 9102
+          replicas: 1
+          containers:
+          - name: kafka
+            image: registry.rebelsoft.com/kafka:latest
+            scm: https://github.com/mingfang/docker-kafka.git
+            env:
+              - {name: ZOOKEEPER_HOST,  value: "zookeeper"}
+              - {name: JMX_PORT,        value: "9999"}
+              - {name: LOG_RETENTION_HOURS, value: "1"}
+              - {name: LOG_RETENTION_BYTES, value: "1048576"}
+            livenessProbe:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - >
+                    echo "get /brokers/ids/0" | JMX_PORT=1235 /kafka/bin/zookeeper-shell.sh $ZOOKEEPER_HOST:2181|grep kafka
+              initialDelaySeconds: 300
+              timeoutSeconds: 5
+            volumeMounts:
+              - name: kafka-data
+                mountPath: /tmp/kafka-logs
+                subPath: kafka
+          volumes:
+          - name: kafka-data
+            persistentVolumeClaim:
+              claimName: cephfs
+
+      - name: zookeeper
+        ports:
+          - port: 2181
+        annotations:
+          icon: //zookeeper.apache.org/images/zookeeper_small.gif
+          group: logging
+        pod:
+          replicas: 1
+          containers:
+          - name: zookeeper
+            image: registry.rebelsoft.com/zookeeper:latest
+            scm: https://github.com/mingfang/docker-zookeeper.git

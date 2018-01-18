@@ -1,0 +1,77 @@
+---
+namespaces:
+  default:
+    secrets:
+    - name: jenkins-ssh-key
+      data:
+        id-rsa: "{{ jenkins_ssh_key }}"
+    services:
+    - name: jenkins
+      ports:
+      - {port: 8080, name: http}
+      - {port: 8081, name: slave}
+      annotations:
+        nginx:
+        - http:
+          - server: default
+            paths:
+            - path: /jenkins
+        intranet:
+        - http:
+          - server: jenkins.*
+            locations:
+            - /jenkins
+          - server: default
+            locations:
+            - /jenkins
+        icon: //jenkins-ci.org/images/logo_head.png
+        depends: [jenkins-swarm-client]
+        group: jenkins
+      pod:
+        replicas: 1
+        containers:
+        - name: jenkins
+          image: registry.rebelsoft.com/jenkins:latest
+          env:
+          - {name: KMASTER, value: "{{ ETCD_HOST }}"}
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - sh
+                - -c
+                - >
+                  mkdir -p /root/.ssh;
+                  cp /etc/jenkins-ssh-key/id-rsa /root/.ssh/id_rsa;
+                  chmod 0400 /root/.ssh/id_rsa;
+                  git clone git@github.com:mingfang/jenkins-seed.git ~/.jenkins/jobs/seed
+          volumeMounts:
+          - {name: docker,  mountPath: /var/run/docker.sock}
+          - {name: jenkins-ssh-key, mountPath: /etc/jenkins-ssh-key, readOnly: true}
+        volumes:
+        - {name: docker, hostPath: {path: /var/run/docker.sock}}
+        - {name: jenkins-ssh-key, secret: {secretName: jenkins-ssh-key}}
+
+    - name: jenkins-swarm-client
+      ports:
+      - {port: 8081, name: dummy}
+      autoscaler:
+         minReplicas: 1
+         maxReplicas: 5
+         targetCPUUtilizationPercentage: 10
+      pod:
+        containers:
+        - name: jenkins-swarm-client
+          image: registry.rebelsoft.com/jenkins-swarm-client:latest
+          env:
+          - {name: MASTER, value: "http://jenkins:8080/jenkins/"}
+          volumeMounts:
+          - {name: docker,  mountPath: /var/run/docker.sock}
+          - {name: jenkins-ssh-key, mountPath: /etc/jenkins-ssh-key, readOnly: true}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["sh", "-c", "mkdir -p /root/.ssh; cp /etc/jenkins-ssh-key/id-rsa /root/.ssh/id_rsa; chmod 0400 /root/.ssh/id_rsa"]
+        volumes:
+        - {name: docker, hostPath: {path: /var/run/docker.sock}}
+        - {name: jenkins-ssh-key, secret: {secretName: jenkins-ssh-key}}

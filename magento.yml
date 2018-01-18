@@ -1,0 +1,19 @@
+namespaces:
+  default:
+    services:
+      - name: magento
+        ports:
+          - port: 80
+        annotations:
+          nginx:
+            - http:
+              - server: magento.*
+                paths:
+                  - path: /
+          icon: //avatars0.githubusercontent.com/u/168457?v=3&s=200
+        pod:
+          replicas: 0
+          containers:
+          - name: magento
+            image: registry.rebelsoft.com/magento:latest
+            scm: git@github.com:mingfang/docker-magento.git

@@ -1,0 +1,54 @@
+namespaces:
+  default:
+    configmaps:
+    - name: ignite
+      data:
+        ignite.xml: |-
+          <?xml version="1.0" encoding="UTF-8"?>
+          <beans xmlns="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+            <bean id="grid.cfg" class="org.apache.ignite.configuration.IgniteConfiguration">
+              <property name="peerClassLoadingEnabled" value="true"/>
+            </bean>
+          </beans>
+
+    services:
+    - name: ignite
+      stateful: true
+      ports:
+      - {name: http-rest, port: 8080}
+      - {name: tcp-rest, port: 11211}
+      - {name: jdbc, port: 10800}
+      - {name: communication, port: 47100}
+      - {name: discovery, port: 47500}
+      - {name: jmx, port: 49112}
+      annotations:
+        nginx:
+        - http:
+          - server: ignite-rest.*
+            port: 8080
+            paths:
+            - path: /
+        icon: https://ignite.apache.org/images/logo3.png
+      pod:
+        nodeSelector:
+          host: ripper1
+        replicas: 1
+        containers:
+        - name: ignite
+          image: registry.rebelsoft.com/ignite
+          env:
+          - {name: ENABLE_PLUGINS, value: "ignite-rest-http"}
+          - {name: ARGS, value: "/ignite.xml"}
+          volumeMounts:
+          - name: md1
+            mountPath: /mnt/md1
+          - name: configmap
+            mountPath: /ignite.xml
+            subPath: ignite.xml
+        volumes:
+        - name: md1
+          hostPath:
+            path: /mnt/md1
+        - name: configmap
+          configMap:
+            name: ignite

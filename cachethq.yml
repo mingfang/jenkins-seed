@@ -1,0 +1,71 @@
+---
+namespaces:
+  default:
+    services:
+      - name: cachethq
+        ports:
+        - {name: http, port: 8000}
+        annotations:
+          nginx:
+            - http:
+              - server: cachethq.*
+                paths:
+                  - path: /
+          icon: https://d21ii91i3y6o6h.cloudfront.net/gallery_images/from_proof/9323/large/1447329476/cachet.png
+        pod:
+          containers:
+          - name: cachethq
+            image: cachethq/docker:latest
+            env:
+            - {name: APP_KEY, value: "cachethq"}
+            - {name: DB_DRIVER, value: "mysql"}
+            - {name: DB_HOST, value: "cachethq-db"}
+            - {name: DB_DATABASE, value: "cachethq"}
+            - {name: DB_USERNAME, value: "cachethq"}
+            - {name: DB_PASSWORD, value: "cachethq"}
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - >
+                      mkdir -p /var/log/nginx;
+                      chmod -R 777 /var/log/nginx;
+
+      - name: cachethq-db
+        ports:
+          - {port: 3306, name: mysql}
+          - {port: 80,  name: http}
+        annotations:
+          nginx:
+            - http:
+              - server: cachethq-db.*
+                port: 80
+                paths:
+                  - path: /
+          icon: https://d21ii91i3y6o6h.cloudfront.net/gallery_images/from_proof/9323/large/1447329476/cachet.png
+        pod:
+          replicas: 1
+          containers:
+          - name: mysql
+            image: registry.rebelsoft.com/mysql:latest
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                    - sh
+                    - -c
+                    - >
+                      mysqladmin --wait=30 ping;
+                      echo "CREATE DATABASE IF NOT EXISTS cachethq;" | mysql;
+                      echo "GRANT ALL ON cachethq.* TO 'cachethq'@'%' IDENTIFIED BY 'cachethq';" | mysql;
+            volumeMounts:
+              - name: data
+                mountPath: /var/lib/mysql
+                subPath: cachethq-db
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+

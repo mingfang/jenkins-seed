@@ -1,0 +1,96 @@
+---
+
+namespaces:
+  default:
+    services:
+      - name: stackstorm
+        ports:
+          - {port: 80, name: http}
+        annotations:
+          nginx:
+            - http:
+              - server: stackstorm.*
+                port: 80
+                paths:
+                  - path: /
+          icon: https://stackstorm.com/wp/wp-content/uploads/2016/10/StackStorm-logo228.png
+        pod:
+          replicas: 1
+          containers:
+            - name: stackstorm
+              image: registry.rebelsoft.com/stackstorm:latest
+              env:
+                - {name: HUBOT_SLACK_TOKEN, value: "{{HUBOT_SLACK_TOKEN}}"}
+
+      - name: stackstorm-rabbitmq
+        ports:
+          - {port: 5672, name: amqp}
+          - {port: 25672, name: clustering}
+          - {port: 15672, name: management}
+        annotations:
+          nginx:
+            - http:
+                - server: rabbitmq.*
+                  port: 15672
+                  paths:
+                    - path: /
+          icon: https://www.rabbitmq.com/img/rabbitmq_logo_strap.png
+        pod:
+          replicas: 1
+          containers:
+          - name: rabbitmq
+            image: registry.rebelsoft.com/rabbitmq:latest
+            scm: git@github.com:mingfang/docker-rabbitmq.git
+
+      - name: stackstorm-mongodb
+        ports:
+        - port: 27017
+        annotations:
+          icon: https://webassets.mongodb.com/_com_assets/cms/mongodb-logo-rgb-j6w271g1xn.jpg
+        pod:
+          replicas: 1
+          containers:
+          - name: mongodb
+            image: registry.rebelsoft.com/mongodb:latest
+            scm: git@github.com:mingfang/docker-mongodb.git
+            volumeMounts:
+            - name: data
+              mountPath: /data
+              subPath: stackstorm-mongodb
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs
+
+      - name: stackstorm-postgres
+        ports:
+        - port: 5432
+        annotations:
+          icon: https://wiki.postgresql.org/images/thumb/7/71/PostgreSQL_logo.1color_blue.300x300.png/120px-PostgreSQL_logo.1color_blue.300x300.png
+        pod:
+          replicas: 1
+          containers:
+          - name: postgres
+            image: registry.rebelsoft.com/postgres:latest
+            lifecycle:
+              postStart:
+                exec:
+                  command:
+                  - sh
+                  - -c
+                  - >
+                    sleep 10;
+                    psql -U postgres --command="select 1";
+                    psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'mistral'" | grep -q 1;
+                    if [ $? -eq 1 ]; then
+                      psql -U postgres -c "CREATE ROLE mistral WITH CREATEDB LOGIN ENCRYPTED PASSWORD 'StackStorm'";
+                      psql -U postgres -c "CREATE DATABASE mistral OWNER mistral";
+                    fi;
+            volumeMounts:
+            - name: data
+              mountPath: /data
+              subPath: stackstorm-postgres
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: cephfs

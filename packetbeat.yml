@@ -1,0 +1,10 @@
+namespaces:
+  default:
+    daemonsets:
+    - name: packetbeat
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: packetbeat
+        image: registry.rebelsoft.com/packetbeat:latest
+        imagePullPolicy: Always

@@ -1,0 +1,50 @@
+namespaces:
+  default:
+    services:
+      - name: knginx
+        ports:
+          - {port: 80, name: http}
+          - {port: 443, name: https}
+          - {port: 90, name: admin}
+        annotations:
+          icon: //nginx.org/nginx.png
+        pod:
+          annotations:
+            prometheus.io/scrape: true
+            prometheus.io/port: 9102
+          terminationGracePeriodSeconds: 1
+          nodeSelector:
+            host: ripper1
+          containers:
+            - name: knginx
+              image: ripper1:5000/knginx:latest
+              ports:
+                - {containerPort: 80,    hostPort: 80}
+                - {containerPort: 443,    hostPort: 443}
+                - {containerPort: 25565, hostPort: 25565}
+                - {containerPort: 25566, hostPort: 25566}
+              readinessProbe:
+                httpGet:
+                  path: /lb-status
+                  port: 80
+                initialDelaySeconds: 10
+              env:
+                - {name: SAML_IDP_URL, value: "https://login.rebelsoft.com/auth/realms/master/protocol/saml/clients/saml"}
+#                - {name: PAGESPEED, value: "on"}
+                - {name: LETSENCRYPT_DOMAINS, value: "www.rebelsoft.com|rebelsoft.com|registry.rebelsoft.com|contact.rebelsoft.com|marketing.rebelsoft.com|blog.rebelsoft.com|store.rebelsoft.com|support.rebelsoft.com|login.rebelsoft.com|chat.rebelsoft.com|fission-controller.rebelsoft.com"}
+    #            - {name: SUB_FILTER, value: "'</body>' \"<script>(function(w,d,t,u,n,a,m){w['MauticTrackingObject']=n; w[n]=w[n]||function(){(w[n].q=w[n].q||[]).push(arguments)},a=d.createElement(t), m=d.getElementsByTagName(t)[0];a.async=1;a.src=u;m.parentNode.insertBefore(a,m)})(window,document,'script','https://contact.rebelsoft.com/mtc.js','mt'); mt('send', 'pageview'); </script></body>\""}
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - name: data
+                  mountPath: /etc/resty-auto-ssl
+                  subPath: knginx/resty-auto-ssl
+                - name: cache
+                  mountPath: /var/cache
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: cephfs
+            - name: cache
+              emptyDir:
+                medium: Memory

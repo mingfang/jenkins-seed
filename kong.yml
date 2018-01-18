@@ -1,0 +1,146 @@
+---
+namespaces:
+  default:
+    configmaps:
+#    - name: kong-statsd-mapping
+#      data:
+    - name: kongfig
+      data:
+        kongfig.yml: |-
+          ---
+          apis:
+          - name: httpbin
+            attributes:
+              uris:
+              - /httpbin
+              upstream_url: 'http://httpbin:5000'
+          plugins:
+          - name: statsd
+            attributes:
+              enabled: true
+              config:
+                host: localhost
+                port: 9125
+                prefix: kong
+                metrics:
+                - sample_rate: 1
+                  name: request_count
+                  stat_type: counter
+                - stat_type: timer
+                  name: latency
+                - stat_type: timer
+                  name: request_size
+                - sample_rate: 1
+                  name: status_count
+                  stat_type: counter
+                - stat_type: timer
+                  name: response_size
+                - consumer_identifier: custom_id
+                  name: unique_users
+                  stat_type: set
+                - sample_rate: 1
+                  name: request_per_user
+                  consumer_identifier: custom_id
+                  stat_type: counter
+                - stat_type: timer
+                  name: upstream_latency
+                - stat_type: timer
+                  name: kong_latency
+                - sample_rate: 1
+                  name: status_count_per_user
+                  consumer_identifier: custom_id
+                  stat_type: counter
+
+    services:
+    - name: kong-postgres
+      ports:
+      - port: 5432
+      annotations:
+        icon: https://wiki.postgresql.org/images/thumb/7/71/PostgreSQL_logo.1color_blue.300x300.png/120px-PostgreSQL_logo.1color_blue.300x300.png
+      pod:
+        replicas: 1
+        containers:
+        - name: postgres
+          image: registry.rebelsoft.com/postgres:latest
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                - sh
+                - -c
+                - >
+                  sleep 10;
+                  psql -U postgres --command="select 1";
+                  psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'kong'" | grep -q 1;
+                  if [ $? -eq 1 ]; then
+                    psql -U postgres -c "CREATE DATABASE kong";
+                  fi;
+                  psql -U postgres -tc "SELECT 1 FROM pg_user WHERE usename = 'kong'" | grep -q 1;
+                  if [ $? -eq 1 ]; then
+                    psql -U postgres -c "CREATE USER kong WITH PASSWORD 'kong'";
+                  fi;
+                  psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE kong TO kong";
+          volumeMounts:
+          - name: data
+            mountPath: /data
+            subPath: kong-postgres
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
+
+    - name: kong
+      ports:
+      - {name: http, port: 8000}
+      - {name: http-admin, port: 8001}
+      - {name: prometheus, port: 9102}
+      annotations:
+        nginx:
+        - http:
+          - server: kong.*
+            paths:
+            - path: /
+        icon: data:image/png;base64,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
+      pod:
+        annotations:
+          prometheus.io/scrape: true
+          prometheus.io/port: 9102
+        containers:
+        - name: kong
+          image: registry.rebelsoft.com/kong:latest
+          volumeMounts:
+          - name: config
+            mountPath: /kongfig.yml
+            subPath: kongfig.yml
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - >
+                    until curl localhost:8001/status; do echo "Waiting for Kong.."; sleep 10; done;
+                    kongfig apply --path /kongfig.yml;
+        - name: statsd-exporter
+          image: prom/statsd-exporter
+        volumes:
+        - name: config
+          configMap:
+            name: kongfig
+
+    - name: konga
+      ports:
+      - {name: http, port: 1337}
+      annotations:
+        nginx:
+        - http:
+          - server: konga.*
+            paths:
+            - path: /
+        icon: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWoAAAB7CAMAAABq+zpbAAAA9lBMVEX///8bISYQMT+rs8kAAAC0v9EYHyT19fUSGR/y8vK/wMFBQUE4OT3DxMQ6PkHm5uaWmJlhuegAChOYn7kUPE1XWlyNjY0cGyGFhoegqMAAIjNLqtMXFxayutAAKTcAAAjc3NwsMTUMExi1trdmwfIAGy57fX6hoqPQ0NHR1+Hf5e+HkqWYoraqq6xRYWlzdXcAABpPT04iIiEAEShDU193hZZlaGuIkZdjcoNQm8I5SlUAABGosr4AFhsjM0ZKXGuco60zPklJjrE+epksWW8lTF4IISkAFiMeDwYoZ4ApHRU+NzIaMDbCydN1golndHwAACUYHC/TK++cAAAS70lEQVR4nO2da2PaOhKGbaP6wiWmbqDgFGObBtxwKwkQSpJDkjbtdvck2f3/f2ZlLrY0kmxDs5vtWb8fSgMG5Mfj0Wg0EpKUK1euXLly5cqVK1euXLly5fpfl/baDfi/0bC6fsDA3eIrN+WvLa16MTbxo/mkSZf/un7t5vyFpT1f2CNXkozalSZdOfZl+KSZu5SXl6lcKM40kIK706sg+KwoFyNs4pVp7kleUEb4TwXZiuIsK8MLWzltPOM/lFOvKAVT1DBeu4F/GQX/qkhSDymhjpVTBz84zvov5+KpM3I+L118OXJH8svSen98bphPbYWr01P8j/3PojS9zL32L8p8unCU5fSCT3on1Bt9dobmazf2t5b7vIbsJJNWQrfiXIyC3LAPlOm68xRzpmTfVXPDPkjB0/PzPqSx8dtP7mu3+ndUULtQ7L1IY52Ogtdu9++nYHm6L+c163xIs6/wmPAQ0qHDzlnvJfNQ0iHr3IfsIaO2t5cmWedxSHY9/wJpzPo4j6+z6jZ1yJKs09Frn8HvIvfuF1ErV53XPoffRL/mPtZCeWI1i4Z3v0xasf97LkTTDMNcyzC01+0kNNwWc9uWLE0x5r9u1IpyURG2x6TFsX+TI35bTXfYmMhoK7807gW8D0z6cOHhBjgwmZ1mup16zWtvm2IdzdObMnwB0IriTEWfX3yPKNWZUzAsxGjOQeF2xmp4Vroqb6Rb+Eyt+dBNOEXNA59cEhxsNOjj9IT+R3MrDY9qiqrjpvjzTlJTzPHBgxdKf4haVinrMiFUhai1uS8DtVnSZqUro7YOjwx5IzSuCEN7rQTegxr8A406oj72SDgKNoNqGXNlm6JeIbkeCGF3jn81/NjIEXnrVNS9DypocrsGm2sW59jO2JPbniJCtY4ANoNaRnyjyIraqIy5nLdvQ1ZdMHrWLl/GqBVHND5PQ13xIAvLc8FnFMeoDa8HeI81L3LNiUWtI/jx+6AOsJ9JbIqOyvz5qWD0Ep3imvXlQajdiQXbaoGTNKty8tmFUtteg4eQRY1vGl6Plwm12TtKb4pvjXlm13kp0jje43fZyaiNsQ+arsIbvDIXuw4Kjl/jhEEc1DKqH4g6GPtC10GegjVhW6JV95t3SZCzfDwAde8cGgmq0u/vlKDZC8/wqjRkLjcPtcqLLjKgLk6gXQhZs+82X2CkGOl2f9TFMrQSWNEz9LLY0Va+12PiGw5qWS+5B6DulK1spMOWlOHbg+XLxB+h7PHeqN0atFhUo7uUIdNpJko/72VBLftsW1NRd/a56Jg18CHFFzRqe84NARJQGw1oJtYR3aF09iONCX0AvoGPWlWBm0pHXZH3IY1PZeLSp/L55VA7/CndBNRDGMHpOn1+laOsfjr+CES3go9a1j1otCmo3b1sOhTqkjfoC/aKYb/IjUTFqAMfUFDRkD69eVtwGqou7KB0lAW1bNXcfVCbNVFTcOQjuPOoUMpovNAAZiMaVBpq9wi2HgYfVSSzUv0w2+Ad+WG+SecAb0+yoMZGR/egiag1flP0K9wIryQj1Oa0RPeJG8zsclAfU8r2ysasGf+XhNrowtZbXdrZFy2GErbm9/OOu219Z+zpnFNEZIckRK1adA+aiNrlDFxUXS1VtzDNYe0DbImqo3p8Qmysd8yR8BWImjteFKHuQNI+uKXNMWNJul6uUpfD6E109npcZUEt+0dUjJCE2qhdsaA9ekwYjGUStuq/PyIjTwY1RZBkyuJlYdv7oA5glg6cOTZqhrTvdZkgx2iw/RUi7FWMWkZzst9KQs02RVVrbNxdinOqvlqqU201wbQAa6mJZgye2Qe1CceAugeiNJOJuf0ytzPoMMMgXY7NKQG1TOXOE1BrR+w3NDgppWCublj7+qQOXnepZBPP/xK0+a8diBo6ajbQrTAOhhmAbVVk7NqPzToJte4TlzcBNdMU/ZxJBW94zkO79q1S3WVeIlHzYSZdBPCmPVAPIWm/AdrO9JqM2ROsYaelx0FIEmrZKsXuNgE1vL9UlZ1K2gLFXQc6qnPSXjTq6H+O7YQMbduhh+2OHb3Ae1t21AFkYzEjTVOlEYlPT2KjQvU8QpiIWkbj6HvFqA3GqPnj4vXZWjIPNI06QmYrq8WsjzVbrJZKRNWxj6eL2faFKQH7eG/UJsxRW2z6BwYoVi2hXE0DH6jq0axWMmoilBejhregLjOtjTUUeDk37hZ3wBxl0R8UCk2sQmEw6C+ma9O2ndWsP2iun8cazKZs9iRzsDcGYxf9imm7Bo5RPW6XuFMAaPi1jKh1f4dGjJoxDF66O01sXO0sZyHKdxutcfdX9qmzGDSJ5981C4OZDZOCGYcwUg8kmVTEWoIh04T8SWKtgAbcaZwlTUGNO1szDTX0TtYh1SfMaNGZ9mOeW9rNZn8xKICn8fMzJv96mwX1sAizdYhjsC59fthTJ58JiHzjPjQNdTSOF6I2AWrUPYA0kwNxlv1mTHhnxc1mBJow7WZhRt8Szh03RACorS5bLcCxkgpEl1LEbdLDYlXe3WGpqHfuWoga9hrooBpnJrM3K2zdRqQYcoF8dmPXFGtnye16AeoQA91yphIhFIgp9FLKmRggCRjl/iFqnUnLqpu0qxB1A9xgiN+C/VA7i0JorYyaTfZJDLs5mJI+xJlyJxchahjmeVwjAb2izql2os+kRwPxd28AqK05W+CjnyeiBt3AFd0U4/y9WOQN2/knZZaDJo+0QJh1n0Rtz7nQGKumT7PtctHR56fq3B6X+hqAeleAAFHXJDZnYtWSUIOuBYGE4AddFYpArfVIX+0sWnuQDo19sCJYO1NuhVEyak7wsTk/ioeqJ4Z6oQKI2hSg1kwmIapa1QTUIHUIWmwwtVnksRHq4O6PKYH6eFbYhzS26+aCzqHYcBI1FXWbfytIdKynvhcWuu7kZkVtMEOSTa8rRA0GAWBCLRtqc7RotWaU/yA4DgZ8UyaepgO+abM14Mx5JaOWOZWpoTyAOnUV2R6opRrD2poYmgj1Fc0SlKFlQx3ctQqtQuQDnCVJenVee+LY+GwyfyJg94n89QB/2oIFl4JaUK0IUb+kVUsa465VvfsfterhqlXAdGLUMcLWFJW1YNFiSKOG1KlFl6BFoF6u/36mr3kG1HqbZ7HQV6cuttkHtRR8YGomvZ4INRjbIvqqZ0KtDdcoCdTvIoRNhI7czhSadXOB5sX6h350XOx+lLvmYahlq8Rx1yDv4HM6AfA1ELWRgFrqMS7EL9eoA8URCN1DZ7RqjLrVj+ubjvutyFrROfLKdwNg1s0VQj5CsbWT3eICv2/wzJhoKmoZccqiYFzNr5yKlTmu3qDWePOW9J8RanDVwbg8o1WHDoQchkQIsVUvPYSmjKte+B4eLs12f1LB3uxAq2aLErDqYLQ4YY6gZXTpa2MJRotb1JKbVnQZo4ZX/Xx/1FIl7BYJ1DgEiVhP33ttuc/46sHUl1E58it9ItRTZmG3eMmMsjOg5qT2QOJBLzOXkJYJ+tEoYS1ALXXUlC4kQg2dDb1wMGOwt5qRwR5p1tgrTxch6WZ/y7XZHwxarcJgsVpEEUiTHsHgYG/Kdl881HAQ4TMkYWZPThkuBjA9tfOoItT8IhoeapgLp4eLGYcwxeNFn6J1R9hx2MsNZrfX19eP2Fzf4MfLWZM2c+oy4RFQ/+GSDZI5qFEVFm/4MOdkgNqFONfPFfS9wnx1hJpXZsJHDfPVeplG7euERKil4ImCpTgrsiNsDfqPn0hd9wsk6wHcTmtU5KVDGdSopsE5aNUHSWAm1y+exF1zA/eJH/l2IWopKCUVPBKowSyF3CabonllQp4QtVQEtJxFDLP5rn999un26TakfHb7NDj7dD0jwr8mrM3ONLeIz1Y2OcUJMshywNEzpyKaEKyjjCMWMWppmFSZTqCuQ7OmMroGqQDMgxComVJ2zHoLEkO9fjy7/OFcYdZnl58d5/nszeBNlCZ5x67Cu82CWl2PbA3YK/klOkx0mWuREFrD6iNVjjgloNYaCS6EQA2nYWR4CxKtFqN2V2By0fm8ieSarTdv3mDU138g+/Hs09njBbJvzx4L+Nkt6iUszc5W9LsbbcHOBk6JG3MQjTFl+LE0pnogdqcJqCVXXMlL1YFAs9Dfiy57Amq4FtfZDWPerIVd9RnWp83D2ePm2Q3s1gxepWmmUvZdloQZsIGxAVM+aU1EOSdmBZgVr7hNQs2pi+KiZlKB+rmg50hArdUvEkhjtaiH6Fke64wLNHblmeYEVHeq9OjbZArl2nzWJrNyQj2Pb5BE1FKVV6DNoGavpX/OT6An+GppSE8uzgBpkTaHLShvve+yo4B115SLYNPKba/DLpYr+sy4r03cH8mopbHIrCnUbAzut+usYWkwqKFQV8h+0VltAudU0hsf0hrQlXy3+6HWenCRRXvuEm9k1+nKOhrTq+UNt8uuH9U/EMekoA5EE+p0fTXraFRU6lD7WGhmMIZrzynUtLNejxabmVAP1kNK8jot+a5UvBbGhFVOYNFih61SlxEaF4P1RieaYbrFrs8p56dSKimohQN0etVAh/M1PpoMA9cMm6KZbjCssevg6bqLHlkguR6KLwYZUF+vBzukt7YFk9oJK7yCCbAC9YoqtO9yAgS1jeR5vdobVhtzj7ubgkWFvWmopQY/70SjNua8uNBCaNLFTelVx5M24kTpNGrCgzhLjLo1e1hcp6PuL1cAtXK7N2p2AahPrXELWBeyprDdqoVdKrN+1afurlTUBlMyz0EtygSu10BhtfkLzuilTVrXBqhnq1U/BfRgsZwtaNSOaGPDJNRGl1kjSi2sZBcEpAouyEtFLbncSwbXLe63FncrRK/D7sRbvx2HAcig0JxNE51IYbZaDFqhAyFmBpwnPunkNeaclc9j4nWtt+9qXGZXhHTUbAQfCqLWepyeI60tXdr8tLga1dkmUVuD2XQ1E1p0aPXrA4mZAUcRVbIl75zArGxWqU7NqMNcT9rZwRgsA2omIROKWfhs1PkOSygVksZDpsiscbBX2MbVYWH1agZtGz+7XC36hW1cTcwMnAo2XklDrXWhl6MWqOATZGZcE8+OiXazoGbWQMm85fxGXbTslisdcVYmxWZ9vB3CFPDosHB9+by6u9uuIOhjF768Wz5fXod95jYNsiCMWlhznLLLjcF0ff45vTY7+wnqqMqAzIKatwKUs0mF1jvP7q99n9kvQwp3VI7Mehrlq9dW/Ph4fXv59DwajZ6fnm6vHzdJkN0hg9iokbgk5pC9m6gTLCJmfSZfFq/cLBNqjrvm7nJT9MT5KUp4gMOvkBsS3jqeGNj4DGJy4A0FmsxXfxa6jww7kjEuRAa77JlHyXNTu7PjpkiyoTaYKRnB3k219K2bwjcjatxL6ikaMjozYp6F0ykSr8Z94ulSTDodtcRGdHAdQQ+lwVZ5eyVmRy25HlyyKtiRbJjaFNwWuCkJqXillz2j5g9bfMz4hVV0eWxb/MFZUJvMTKjK7M/W5e5NsDtctZCgzDIraqkCzFW8pWEjqSm4LYhTa0EqXrD1Y1FIV6t5HJNWErcCxaipkmPOOtYegoXJlswM6hqyr+sqbwMDXz8fu6Kv10o+9cEi1BpohC/ePVKqyx/4TVF1/UPa3D7J2l7ya1BJzX7EwcdD8tqQSolGzeuYJxbDms2oaMNaGYeCa+Ab6Xq47Yk3YfchI95Ffz0zNR/JHFPXJGGjTqzivOypsCm+6pXHWX7k4vmPHWznxyoRdnMW/7CJ44xSVuG4vSop7jaWZr3KiHtcp1ubHHlbI/K8o8lkPHQTv16jv74qviwufWAv+XONYn0+KUVT5F65NKnVKxmX2fXu4kDkxypcJ1qA1U1h4m8wW8YrFu27p//2bzoYQXFLr1cMXvcHJTS30tm0pdepuPusZqw8KwRsZb38lixG2C7OJXyHPWKnRXJlkdEb2VvYzs0Nat/gseJittNiNVV+WNbN9+/bH7o8XV66r93k31dudbT+9Url5uvXr98evrd/2Fg3bSt8xJyVbz/x899D13GxvMzqmnJx5Q6flQvbQR8/vn375f7nA7Zh/+Hn1z+/OzfOt69fTt5+/Hj/3b44HfXyX1v8ZZmV3vMpeouFcX+5/3bz8wRTv1HWnMNnv96MqkX3tZv515BmVtCXkOrbtQ2H//34oHzcPIP/W0vaUT/XnvIedmC/fD8JH37+GT1xkf8W3Uuqgu63Zn1/s0GtbFGffDvKfx7tRTVRYtQf16hPNvp6lf/o38vqz60HObn/fn/y9uQkQn1v5/7jZYW+Yr+xRvv9Z/iAlPst62PeVim5DpaLNmTvj5GMvn35+kNeouPNU9+EybFch2iN+stP5W+1otQp/f3vI0PqTP4WxtYnDznql1X728/j839sN7Pd/g5YZfyP84efNn+TylyHqtOo1zuM+ZrDep238WquXLly5cqVK1euXLly5cqVK9f/pP4NTZcz68AWCZsAAAAASUVORK5CYII=
+      pod:
+        containers:
+        - name: konga
+          image: registry.rebelsoft.com/konga:latest
+          env:
+          - {name: KONG_ADMIN_URL, value: "http://kong:8001"}

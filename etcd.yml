@@ -1,0 +1,15 @@
+namespaces:
+  default:
+    services:
+      - name: etcd
+        ports:
+          - port: 2379
+        pod:
+          containers:
+            - name: etcd
+              image: quay.io/coreos/etcd
+              env:
+                - name: ETCD_LISTEN_CLIENT_URLS
+                  value: http://0.0.0.0:2379
+                - name: ETCD_ADVERTISE_CLIENT_URLS
+                  value: http://etcd:2379

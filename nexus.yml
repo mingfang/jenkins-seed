@@ -1,0 +1,40 @@
+namespaces:
+  default:
+    services:
+    - name: nexus
+      ports:
+        - {name: docker, port: 5001}
+        - {name: http, port: 8081}
+      annotations:
+        nginx:
+          - http:
+            - server: registry2.*
+              port: 5001
+              paths:
+                - path: /v2
+                  directives:
+                    - if ($request_method !~ ^(GET|HEAD)$) { return 405; }
+                - path: /v2/_catalog
+                  directives:
+                    - return 405;
+            - server: nexus.*
+              port: 8081
+              paths:
+                - path: /
+        icon: https://books.sonatype.com/nexus-book/reference3/images/sonatype_logo_whiteBG.jpg
+      pod:
+        nodeSelector:
+          host: ripper1
+        containers:
+        - name: nexus
+          image: registry.rebelsoft.com/nexus:latest
+          ports:
+          - {containerPort: 5001, hostPort: 5001}
+          volumeMounts:
+          - name: data
+            mountPath: /sonatype-work/nexus3
+            subPath: nexus
+        volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cephfs
