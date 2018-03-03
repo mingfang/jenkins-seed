@@ -11,6 +11,8 @@ namespaces:
     daemonsets:
     - name: fluentd-kubernetes
       clusterRoleBinding: fluentd-kubernetes
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: fluentd-kubernetes
         image: registry.rebelsoft.com/fluentd-kubernetes
@@ -55,6 +57,12 @@ namespaces:
         - name: elasticsearch
           image: registry.rebelsoft.com/elasticsearch:latest
           imagePullPolicy: Always
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "5Gi"
           livenessProbe:
             httpGet:
               path: /
@@ -99,7 +107,6 @@ namespaces:
               cpu: "250m"
             limits:
               memory: "5Gi"
-              cpu: "2"
           readinessProbe:
             httpGet:
               path: /
