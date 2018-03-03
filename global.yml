@@ -1,3 +1,18 @@
+priorityclasses:
+- name: normal
+  value: 50
+  globaleDefault: true
+  description: Default Priority
+- name: critical
+  value: 100
+  description: Critical Priority
+- name: high
+  value: 90
+  description: High Priority
+- name: low
+  value: 0
+  description: Low Priority
+
 namespaces:
   default:
     configmaps:
