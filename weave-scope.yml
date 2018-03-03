@@ -14,7 +14,7 @@ namespaces:
       pod:
         containers:
         - name: weave-scope
-          image: weaveworks/scope:1.6.7
+          image: weaveworks/scope:1.7.3
           args:
           - '--no-probe'
 
@@ -22,7 +22,7 @@ namespaces:
     - name: weave-scope-agent
       containers:
       - name: agent
-        image: weaveworks/scope:1.6.7
+        image: weaveworks/scope:1.7.3
         args:
         - '--no-app'
         - '--probe.docker.bridge=docker0'
