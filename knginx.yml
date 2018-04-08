@@ -9,9 +9,6 @@ namespaces:
       annotations:
         icon: //nginx.org/nginx.png
       pod:
-        annotations:
-          prometheus.io/scrape: true
-          prometheus.io/port: 9102
         priorityClassName: critical
         terminationGracePeriodSeconds: 1
         nodeSelector:
