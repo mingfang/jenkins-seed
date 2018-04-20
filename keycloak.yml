@@ -46,7 +46,7 @@ namespaces:
                       /keycloak/bin/kcadm.sh create clients -s clientId=openid-connect -s protocol=openid-connect -s "rootUrl=https://drools.rebelsoft.com" -s "baseUrl=/drools" -s 'redirectUris=["/drools/*"]' $ARGS
 
                       #use github as idp
-                      /keycloak/bin/kcadm.sh create identity-provider/instances -s alias=github -s providerId=github -s config.clientId=2844313b6902d981402a -s config.clientSecret=f4d1ba7985edd23679e3a39a21f6924f9f137945 -s config.defaultScope="user,read:org" $ARGS
+                      /keycloak/bin/kcadm.sh create identity-provider/instances -s alias=github -s providerId=github -s config.clientId={{CLIENT_ID}} -s config.clientSecret={{CLIENT_SECRET}} -s config.defaultScope="user,read:org" $ARGS
                       
       - name: keycloak-postgres
         ports:
